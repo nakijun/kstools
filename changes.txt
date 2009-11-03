@@ -1,0 +1,9 @@
+current version
+---------------
++ added Delphi 2007 support
+
+initial checkin
+---------------
+TksComPort component for Delphi 2009
+Terminal app to test TksComPort
+---------------

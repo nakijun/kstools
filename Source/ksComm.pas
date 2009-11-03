@@ -1,3 +1,10 @@
+{ *********************************************************** }
+{ *                    ksTools Library                      * }
+{ *       Copyright (c) Sergey Kasandrov 1997, 2009         * }
+{ *       -----------------------------------------         * }
+{ *      Blog: http://sergworks.wordpress.com/kstools       * }
+{ *********************************************************** }
+
 unit ksComm;
 
 interface
@@ -234,7 +241,6 @@ begin
             end;
 
             WAIT_OBJECT_0 + 1: begin
-//              ResetEvent(FExitEvent);
               Exit;
             end;
 
@@ -308,7 +314,7 @@ begin
         or FWriteEvent signalled from main thread (write requested)
   We expect these events to happen, but we don't rely on them;
     if nothing happens for 50 milliseconds after last event, thread wakes up,
-    checks port state and performs I/O, if necessary.
+    checks port state and performs Read, if necessary.
 }
 //        WaitForMultipleObjects(FOwner.FReadEvent, 50);
 
@@ -545,7 +551,7 @@ end;
 constructor TksComPort.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
-  FWndHandle:= AllocateHWnd(WndProc);
+  FWndHandle:= Classes.AllocateHWnd(WndProc);
   FPortHandle:= INVALID_HANDLE_VALUE;
   FErrorMask:= $FFFFFFFF;
   FEventMask:= DefaultEventMask;
@@ -558,7 +564,7 @@ end;
 
 destructor TksComPort.Destroy;
 begin
-  DeallocateHWnd(FWndHandle);
+  Classes.DeallocateHWnd(FWndHandle);
   inherited Destroy;
 end;
 
@@ -603,18 +609,19 @@ begin
     FRBuffer:= TksRingBuffer.Create(FRBufSize);
     FWBuffer:= TksRingBuffer.Create(FWBufSize);
 
-{ Signalled by Event Thread to I/O Thread}
+{ Signalled by Event Thread to Read Thread}
     FRXEvent:= CreateEvent(nil,
                            True,      // manual reset
                            False,     // initial state = not signaled
                            nil);
 
-{ Signalled by main Thread to I/O Thread}
+{ Signalled by main Thread to Write Thread}
     FWriteEvent:= CreateEvent(nil,
                               True,      // manual reset
                               False,     // initial state = not signaled
                               nil);
 
+{ Signalled by main Thread to all background threads}
     FExitEvent:= CreateEvent(nil,
                              True,      // manual reset
                              False,     // initial state = not signaled
