@@ -1,0 +1,12 @@
+#summary Can I delete this page?
+
+= Introduction =
+
+The page is a bullshit. The only thing I want to know - can I delete it?
+
+= Details =
+
+Add your content here.  Format your content with:
+  * Text in *bullshit* or _bullshit_ is still bullshit
+  * Headings, paragraphs, and lists are bullshit
+  * Automatic links to other wiki pages are bullshit
