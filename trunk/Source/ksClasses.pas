@@ -1,4 +1,13 @@
+{ *********************************************************** }
+{ *                    ksTools Library                      * }
+{ *       Copyright (c) Sergey Kasandrov 1997, 2009         * }
+{ *       -----------------------------------------         * }
+{ *      Blog: http://sergworks.wordpress.com/kstools       * }
+{ *********************************************************** }
+
 unit ksClasses;
+
+{$I ksTools.inc}
 
 interface
 
@@ -68,7 +77,11 @@ begin
     if Count > FLength then Count:= FLength;
     if Count > 0 then begin
       Dec(FLength, Count);
+{$IFDEF OldVersion}
+      P1:= @PChar(FBuffer)[FOrigin];
+{$ELSE}
       P1:= @FBuffer[FOrigin];
+{$ENDIF}
       P2:= @Buf;
       if FOrigin + Count <= FSize then begin
         Move(P1^, P2^, Count);
@@ -108,7 +121,11 @@ begin
       if Org >= FSize then Org:= Org - FSize;
       Inc(FLength, Count);
       P1:= @Buf;
+{$IFDEF OldVersion}
+      P2:= @PChar(FBuffer)[Org];
+{$ELSE}
       P2:= @FBuffer[Org];
+{$ENDIF}
       if Org + Count <= FSize then Move(P1^, P2^, Count)
       else begin
         N:= FSize - Org;
