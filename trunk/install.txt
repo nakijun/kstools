@@ -28,4 +28,4 @@ Step 3. Compile and install designtime package
 3.2. Rightclick the package name (ksToolsD*.bpl) in the Project Manager window;
 3.3. Select "Compile" from the popup menu;
 3.4. Select "Install" from the popup menu;
-3.5. Close the runtime package ("File|Close All").
+3.5. Close the designtime package ("File|Close All").

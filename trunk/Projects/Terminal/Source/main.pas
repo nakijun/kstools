@@ -36,12 +36,15 @@ type
     chbCR: TCheckBox;
     ToolButton7: TToolButton;
     chbSendHex: TCheckBox;
+    ToolButton8: TToolButton;
+    ToolButton9: TToolButton;
     procedure acConnectExecute(Sender: TObject);
     procedure acConnectUpdate(Sender: TObject);
     procedure acDisconnectExecute(Sender: TObject);
     procedure acSetupExecute(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure FormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+    procedure ToolButton8Click(Sender: TObject);
   private
     { Private declarations }
     FPort: TksComPort;
@@ -222,7 +225,7 @@ end;
 
 procedure TfrmMain.acConnectExecute(Sender: TObject);
 begin
-  if not FPort.Active then begin
+  if not FPort.Connected then begin
 //    Port1.ReadBufSize:= 64 * 1024;       // DEBUG!
 //    Port1.WriteBufSize:= 64;
     FPort.PortName:= cmbPort.Text;
@@ -235,7 +238,7 @@ var
   Connected: Boolean;
 
 begin
-  Connected:= FPort.Active;
+  Connected:= FPort.Connected;
   acConnect.Enabled:= not Connected;
   acDisconnect.Enabled:= Connected;
   acSetup.Enabled:= Connected;
@@ -243,7 +246,7 @@ end;
 
 procedure TfrmMain.acDisconnectExecute(Sender: TObject);
 begin
-  if FPort.Active then begin
+  if FPort.Connected then begin
     FPort.Close;
     (Sender as TAction).Checked:= True;
   end;
@@ -254,7 +257,7 @@ var
   DCB: TDCB;
 
 begin
-  if FPort.Active then begin
+  if FPort.Connected then begin
     FPort.GetPortState(DCB);
     if frmDCB.ExecDCB(DCB) then FPort.SetPortState(DCB);
   end;
@@ -292,12 +295,12 @@ end;
 procedure TfrmMain.PortMessage(Sender: TObject; var Msg: TMessage);
 begin
   case Msg.WParam of
-    etCommEvent: PortEvent(Msg.LParam);
-    etCommError: PortError(Msg.LParam);
-    etCommDataReady: PortRead(Msg.LParam);
-    etWriteBufEmpty: ;
-    etReadOverflow: ReadOverflow(Msg.LParam);
-    etFatalError: FatalError(Msg.LParam);
+    TksComPort.etCommEvent: PortEvent(Msg.LParam);
+    TksComPort.etCommError: PortError(Msg.LParam);
+    TksComPort.etCommDataReady: PortRead(Msg.LParam);
+    TksComPort.etWriteBufEmpty: ;
+    TksComPort.etReadOverflow: ReadOverflow(Msg.LParam);
+    TksComPort.etFatalError: FatalError(Msg.LParam);
   end;
   Msg.Result:= 0;
 end;
@@ -343,6 +346,14 @@ end;
 procedure TfrmMain.ReadOverflow(Value: LongWord);
 begin
   MemoAdd(MemoLog, Format('Read Queue Overflow %d', [Value]));
+end;
+
+procedure TfrmMain.ToolButton8Click(Sender: TObject);
+var
+  CommConfig: TCommConfig;
+
+begin
+  CommConfigDialog(PChar(FPort.PortName), 0, CommConfig);
 end;
 
 procedure TfrmMain.FatalError(Value: LongWord);
