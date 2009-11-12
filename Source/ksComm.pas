@@ -7,30 +7,12 @@
 
 unit ksComm;
 
+{$I ksTools.inc}
+
 interface
 
 uses
-  Windows, Messages, SysUtils, Classes, Forms, ksClasses;
-
-const
-{ Event type }
-  etCommEvent     = 0;
-  etCommError     = 1;
-  etCommDataReady = 2;
-  etWriteBufEmpty = 3;
-  etReadOverflow  = 4;
-  etFatalError    = 5;
-
-const
-  DefaultCommTimeouts: TCommTimeouts = (
-    ReadIntervalTimeout: MAXDWORD;
-    ReadTotalTimeoutMultiplier: 0;
-    ReadTotalTimeoutConstant: 0;
-    WriteTotalTimeoutMultiplier: 0;
-    WriteTotalTimeoutConstant: 0);
-
-  DefaultEventMask = EV_CTS + EV_DSR + EV_RLSD + EV_RING +
-                     {EV_RXCHAR +} EV_ERR + EV_BREAK;
+  Consts, Windows, Messages, SysUtils, Classes, Forms, ksClasses;
 
 type
   TksMessageEvent = procedure(Sender: TObject; var Msg: TMessage) of object;
@@ -39,13 +21,75 @@ type
   TksCommTimeoutsEvent = procedure(Sender: TObject; var Timeouts: TCommTimeouts) of object;
   TksCommMaskEvent = procedure(Sender: TObject; var Mask: LongWord) of object;
   TksCommEvent = procedure(Sender: TObject; Value: LongWord) of object;
+  TksReadStopEvent = procedure(Sender: TObject; Value: Byte; var Stop: Boolean) of object;
 
-  TksCommParity = (cpNone, cpOdd, cpEven, cpMark, cpSpace);
-  TksCommStopBits = (sbOneBit, sbOne5Bits, sbTwoBits);
-  TksCommDTRControl = (cdDisable, cdEnable, cdHandShake);
-  TksCommRTSControl = (crDisable, crEnable, crHandShake, crToggle);
-
+type
   TksComPort = class(TComponent)
+  public const
+                            { Event types }
+    etCommEvent     = 0;
+    etCommError     = 1;
+    etCommDataReady = 2;
+    etWriteBufEmpty = 3;
+    etReadOverflow  = 4;
+    etFatalError    = 5;
+
+    DefaultCommTimeouts: TCommTimeouts = (
+      ReadIntervalTimeout: MAXDWORD;
+      ReadTotalTimeoutMultiplier: 0;
+      ReadTotalTimeoutConstant: 0;
+      WriteTotalTimeoutMultiplier: 0;
+      WriteTotalTimeoutConstant: 0);
+
+    DefaultEventMask = EV_CTS + EV_DSR + EV_RLSD + EV_RING +
+                      {EV_RXCHAR +} EV_ERR + EV_BREAK;
+
+                      { Valid Parity Values, copied from Windows.pas }
+    NOPARITY = 0;
+    ODDPARITY = 1;
+    EVENPARITY = 2;
+    MARKPARITY = 3;
+    SPACEPARITY = 4;
+
+                      { Valid StopBits Values, copied from Windows.pas }
+    ONESTOPBIT = 0;
+    ONE5STOPBITS = 1;
+    TWOSTOPBITS = 2;
+
+                      { Valid DTR Control Flow Values, copied from Windows.pas }
+    DTR_CONTROL_DISABLE = 0;
+    DTR_CONTROL_ENABLE = 1;
+    DTR_CONTROL_HANDSHAKE = 2;
+
+                      { Valid RTS Control Flow Values, copied from Windows.pas }
+    RTS_CONTROL_DISABLE = 0;
+    RTS_CONTROL_ENABLE = 1;
+    RTS_CONTROL_HANDSHAKE = 2;
+    RTS_CONTROL_TOGGLE = 3;
+
+                      { Communications Error Flags, copied from Windows.pas }
+    CE_RXOVER = 1;        { Receive Queue overflow }
+    CE_OVERRUN = 2;       { Receive Overrun Error }
+    CE_RXPARITY = 4;      { Receive Parity Error }
+    CE_FRAME = 8;         { Receive Framing error }
+    CE_BREAK = $10;       { Break Detected }
+    CE_TXFULL = $100;     { TX Queue is full }
+
+                      { Communications Events, copied from Windows.pas }
+    EV_RXCHAR = 1;        { Any Character received }
+    EV_RXFLAG = 2;        { Received certain character }
+    EV_TXEMPTY = 4;       { Transmitt Queue Empty }
+    EV_CTS = 8;           { CTS changed state }
+    EV_DSR = $10;         { DSR changed state }
+    EV_RLSD = $20;        { RLSD changed state }
+    EV_BREAK = $40;       { BREAK received }
+    EV_ERR = $80;         { Line status error occurred }
+    EV_RING = $100;       { Ring signal detected }
+    EV_PERR = $200;       { Printer error occured }
+    EV_RX80FULL = $400;   { Receive buffer is 80 percent full }
+    EV_EVENT1 = $800;     { Provider specific event 1 }
+    EV_EVENT2 = $1000;    { Provider specific event 2 }
+
   private
     FWndHandle: HWND;
     FPortName: string;
@@ -69,8 +113,8 @@ type
 
     FBaudRate: LongWord;
     FByteSize: Byte;
-    FParity: TksCommParity;
-    FStopBits: TksCommStopBits;
+    FParity: Byte;
+    FStopBits: Byte;
     FRBufSize: Integer;
     FWBufSize: Integer;
 
@@ -78,8 +122,15 @@ type
     FCTSControl: Boolean;
     FDSRControl: Boolean;
     FDSRSensitivity: Boolean;
-    FDTRControl: TksCommDTRControl;
-    FRTSControl: TksCommRTSControl;
+    FDTRControl: LongWord;
+    FRTSControl: LongWord;
+
+    FPendingRead: Boolean;
+    FPendingWrite: Boolean;
+    FPendingCount: Integer;
+    FPendingPtr: PByte;
+    FTimerFired: Boolean;
+    FStopPos: Integer;
 
     FOnMessage: TksMessageEvent;
     FOnError: TksCommEvent;
@@ -89,7 +140,8 @@ type
     FOnWrite: TksCommEvent;
     FOnFatalError: TksCommEvent;
 
-//    FOnGetCommState: TksCommStateEvent;
+    FOnReadStop: TksReadStopEvent;
+
     FOnSetCommState: TksCommStateEvent;
     FOnSetCommTimeouts: TksCommTimeoutsEvent;
     FOnSetCommMask: TksCommMaskEvent;
@@ -101,10 +153,10 @@ type
     procedure SetWBufSize(Value: Integer);
     procedure SetBaudRate(const Value: LongWord);
     procedure SetByteSize(const Value: Byte);
-    procedure SetParity(const Value: TksCommParity);
-    procedure SetStopBits(const Value: TksCommStopBits);
-    procedure SetRTSControl(const Value: TksCommRTSControl);
-    procedure SetDTRControl(const Value: TksCommDTRControl);
+    procedure SetParity(const Value: Byte);
+    procedure SetStopBits(const Value: Byte);
+    procedure SetRTSControl(const Value: LongWord);
+    procedure SetDTRControl(const Value: LongWord);
     procedure SetDSRSensitivity(const Value: Boolean);
     procedure SetParityCheck(const Value: Boolean);
     procedure SetCTSControl(const Value: Boolean);
@@ -112,21 +164,32 @@ type
 
     procedure UpdateDCB(var DCB: TDCB);
     procedure UpdateProperties(const DCB: TDCB);
+    procedure UpdateTimer(TimeOut: LongWord);
   protected
     procedure HandleMessage(Msg: TMessage);
+    procedure PortMessage(Code, SubCode: Integer);
+    function ReadStop(Count: Integer): Boolean;
   public
     { Public declarations }
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
     function Open: Boolean;
+    procedure ClearRBuf;
+    procedure ClearWBuf;
     procedure Close;
-    function Active: Boolean;
+    function Connected: Boolean;
     function GetPortState(var DCB: TDCB): Boolean;
     function GetPortTimeouts(var Timeouts: TCommTimeouts): Boolean;
     function GetPortMask(var Mask: LongWord): Boolean;
     function SetPortState(const DCB: TDCB): Boolean;
-    function Read(var Buf; Count: Integer): Integer;
-    function Write(var Buf; Count: Integer): Integer;
+    function Read(var Buf; Count: Integer): Integer; overload;
+    function Read(var Buf; Count: Integer; TimeOut: LongWord): Integer; overload;
+    function Write(const Buf; Count: Integer): Integer; overload;
+    function Write(const Buf; Count: Integer; TimeOut: LongWord): Integer; overload;
+
+    property Handle: THandle read FPortHandle;
+    property StopPos: Integer read FStopPos;
+
   published
     { Published declarations }
     property PortName: string read FPortName write FPortName;
@@ -135,17 +198,16 @@ type
 
     property BaudRate: LongWord read FBaudRate write SetBaudRate default 9600;
     property ByteSize: Byte read FByteSize write SetByteSize default 8;
-    property Parity: TksCommParity read FParity write SetParity default cpNone;
-    property StopBits: TksCommStopBits read FStopBits write SetStopBits default sbOneBit;
+    property Parity: Byte read FParity write SetParity default NOPARITY;
+    property StopBits: Byte read FStopBits write SetStopBits default ONESTOPBIT;
     property ParityCheck: Boolean read FParityCheck write SetParityCheck default False;
     property CTSControl: Boolean read FCTSControl write SetCTSControl default False;
     property DSRControl: Boolean read FDSRControl write SetDSRControl default False;
-    property DTRControl: TksCommDTRControl read FDTRControl write SetDTRControl default cdDisable;
-    property RTSControl: TksCommRTSControl read FRTSControl write SetRTSControl default crDisable;
+    property DTRControl: LongWord read FDTRControl write SetDTRControl default DTR_CONTROL_DISABLE;
+    property RTSControl: LongWord read FRTSControl write SetRTSControl default RTS_CONTROL_DISABLE;
     property DSRSensitivity: Boolean read FDSRSensitivity write SetDSRSensitivity default False;
 
 //    property ReadFileName: string read FReadName write FReadName;
-
     property OnMessage: TksMessageEvent read FOnMessage write FOnMessage;
     property OnReadOverflow: TksCommEvent read FOnReadOverflow write FOnReadOverflow;
     property OnError: TksCommEvent read FOnError write FOnError;
@@ -153,6 +215,7 @@ type
     property OnRead: TksCommEvent read FOnRead write FOnRead;
     property OnWrite: TksCommEvent read FOnWrite write FOnWrite;
     property OnFatalError: TksCommEvent read FOnFatalError write FOnFatalError;
+    property OnReadStop: TksReadStopEvent read FOnReadStop write FOnReadStop;
 //    property OnGetCommState: TksCommStateEvent read FOnGetCommState write FOnGetCommState;
     property OnSetCommState: TksCommStateEvent read FOnSetCommState write FOnSetCommState;
     property OnSetCommTimeouts: TksCommTimeoutsEvent read FOnSetCommTimeouts write FOnSetCommTimeouts;
@@ -198,7 +261,8 @@ end;
 procedure TCommThread.PortMessage(Code, SubCode: Integer);
 begin
   if not Terminated then
-    PostMessage(FOwner.FWndHandle, FOwner.MsgID, Code, SubCode);
+//    PostMessage(FOwner.FWndHandle, FOwner.MsgID, Code, SubCode);
+    FOwner.PortMessage(Code, SubCode);
 end;
 
 { TCommEventThread }
@@ -209,11 +273,9 @@ var
   EvtMask: DWORD;
   Junk: DWORD;
   OK: Boolean;
-//  LastEvent: LongWord;
   H: array[0..1] of THandle;
 
 begin
-//  LastEvent:= 0;
   try
     FillChar(OL, SizeOf(OL), 0);
     OL.hEvent:= CreateEvent(nil,
@@ -248,10 +310,9 @@ begin
         end;
 
         if OK then begin
-          if {(EvtMask <> LastEvent) and} (EvtMask and FOwner.FEventMask <> 0) then begin
+          if (EvtMask and FOwner.FEventMask <> 0) then begin
 { Inform main thread }
-            PortMessage(etCommEvent, LPARAM(EvtMask));
-//            LastEvent:= EvtMask;
+            PortMessage(TksComPort.etCommEvent, LPARAM(EvtMask));
           end;
 { Signal com event to read thread}
           if (EvtMask and EV_RXCHAR <> 0) and (FOwner.FRXEvent <> 0)
@@ -260,7 +321,7 @@ begin
         else begin
 { Port closed or other fatal condition, just exit the thread }
 //          FInternalError:= 2;
-          PortMessage(etFatalError, 1);
+          PortMessage(TksComPort.etFatalError, 1);
           Exit;
         end;
 
@@ -273,7 +334,7 @@ begin
   except
     on E:Exception do begin
 //      FInternalError:= 1;
-      PortMessage(etFatalError, 2);
+      PortMessage(TksComPort.etFatalError, 2);
 //      raise;
     end;
   end;
@@ -292,14 +353,11 @@ var
   ReadCount: DWORD;
   Errors: DWORD;
   Stat: TComStat;
-  InBuf: packed array[0..511] of AnsiChar;//Byte;
+  InBuf: packed array[0..511] of Byte;
   BytesToRead: LongWord;
   BytesLost: LongWord;
   WaitResult: Cardinal;
-
-//  LastError: LongWord;
-
-  Timeout: LongWord;    // Specifies the time-out interval, in milliseconds.
+  Timeout: LongWord;    // Specifies the watchdog time-out in milliseconds.
 
 begin
 //  LastError:= 0;
@@ -316,7 +374,6 @@ begin
     if nothing happens for 50 milliseconds after last event, thread wakes up,
     checks port state and performs Read, if necessary.
 }
-//        WaitForMultipleObjects(FOwner.FReadEvent, 50);
 
         H[0]:= FOwner.FRXEvent;
         H[1]:= FOwner.FExitEvent;
@@ -339,17 +396,16 @@ begin
 // Unknown
         else
 //          FInternalError:= 5;
-          PortMessage(etFatalError, $101);
+          PortMessage(TksComPort.etFatalError, $101);
           Exit;
         end;
 
 
         while ClearCommError(FOwner.FPortHandle, Errors, @Stat) do begin
           Errors:= Errors and FOwner.FErrorMask;
-          if (Errors <> 0) {and (Errors <> LastError)} then begin
-            PortMessage(etCommError, Errors);
+          if (Errors <> 0) then begin
+            PortMessage(TksComPort.etCommError, Errors);
           end;
-//            LastError:= Error;
 
           if Stat.cbInQue = 0 then Break;
 
@@ -388,7 +444,7 @@ begin
 // Unknown
               else
 //                FInternalError:= 5;
-                PortMessage(etFatalError, $102);
+                PortMessage(TksComPort.etFatalError, $102);
                 Exit;
               end; {case}
 
@@ -399,9 +455,9 @@ begin
 //                  if Assigned(FOwner.FReadLog) then
 //                    FOwner.FReadLog.Write(InBuf, ReadCount);
             BytesLost:= ReadCount - LongWord(FOwner.FRBuffer.Write(InBuf, ReadCount));
-            if BytesLost <> 0 then PortMessage(etReadOverflow, BytesLost);
+            if BytesLost <> 0 then PortMessage(TksComPort.etReadOverflow, BytesLost);
 //        Dec(Stat.cbInQue, ReadCount);
-            PortMessage(etCommDataReady, ReadCount);
+            PortMessage(TksComPort.etCommDataReady, ReadCount);
           end;
 
         end; {while}
@@ -413,7 +469,7 @@ begin
   except
     on E:Exception do begin
 //      FInternalError:= 1;
-      PortMessage(etFatalError, $103);
+      PortMessage(TksComPort.etFatalError, $103);
       raise;
     end;
   end;
@@ -422,13 +478,18 @@ end;
 { TCommWriteThread }
 
 procedure TCommWriteThread.Execute;
+const
+  DefaultTimeout = 50;
+
 var
   WriteOL: TOverlapped;
   H: packed array[0..1] of THandle;
   OK: Bool;
   WriteCount: DWORD;
+  TotalCount: LongWord;
   Errors: DWORD;
   Stat: TComStat;
+// OutBuf size must not exceed the driver output buffer size
   OutBuf: packed array[0..127] of Byte;
 //  OutBufPtr: Pointer;
 //  P: PByte;
@@ -441,6 +502,7 @@ begin
   try
     FillChar(WriteOL, SizeOf(WriteOL), 0);
     WriteOL.hEvent:= CreateEvent(nil, True, False, nil);  // !!! manual reset
+//    Timeout:= INFINITE;
 
  //   BytesWritten:= 0;
     BytesToWrite:= 0;
@@ -450,7 +512,7 @@ begin
 //        H[0]:= WriteOL.hEvent;
         H[0]:= FOwner.FWriteEvent;
         H[1]:= FOwner.FExitEvent;
-        WaitResult:= WaitForMultipleObjects(2, @H, False, INFINITE);
+        WaitResult:= WaitForMultipleObjects(2, @H, False, INFINITE {TimeOut});
 
         case WaitResult of
 
@@ -458,32 +520,40 @@ begin
           WAIT_OBJECT_0: ResetEvent(FOwner.FWriteEvent);
 
           WAIT_OBJECT_0 + 1: Exit;
+// Timeout
+//          WAIT_TIMEOUT: Timeout:= {DefaultTimeout;  //} INFINITE;
 
 // Unknown
         else
 //          FInternalError:= 5;
-          PortMessage(etFatalError, $201);
+          PortMessage(TksComPort.etFatalError, $201);
           Exit;
         end; {case}
+
+        TotalCount:= 0;
 
         while True do begin
 
           if ClearCommError(FOwner.FPortHandle, Errors, @Stat) then begin
             Errors:= Errors and FOwner.FErrorMask;
             if (Errors <> 0) {and (Errors <> LastError)} then begin
-              PortMessage(etCommError, Errors);
+              PortMessage(TksComPort.etCommError, Errors);
             end;
 //            LastError:= Error;
           end;
 
           Inc(BytesToWrite, FOwner.FWBuffer.Read(OutBuf[BytesToWrite],
                                           SizeOf(OutBuf) - BytesToWrite));
+
 //            BytesToWrite:= FOwner.FWBuffer.Read(OutBuf, SizeOf(OutBuf));
+
           if BytesToWrite = 0 then begin
-            PortMessage(etWriteBufEmpty, 0);
+            PortMessage(TksComPort.etWriteBufEmpty, TotalCount);
             Break;
           end;
 
+//          Timeout:= DefaultTimeout;
+//
           OK:= WriteFile(FOwner.FPortHandle,         {handle}
                          OutBuf,                     {buffer}
                          BytesToWrite,               {bytes to write}
@@ -514,7 +584,7 @@ begin
 
               else
 //                FInternalError:= 5;
-                PortMessage(etFatalError, $202);
+                PortMessage(TksComPort.etFatalError, $202);
                 Exit;
               end;  {case}
             end;
@@ -523,13 +593,14 @@ begin
           if OK then begin
             if (WriteCount > 0) then begin
               Dec(BytesToWrite, WriteCount);
+              Inc(TotalCount, WriteCount);
               if (BytesToWrite > 0) then
                 Move(OutBuf[WriteCount], OutBuf, BytesToWrite);
             end;
           end
           else begin
 //            FInternalError:= 2;
-            PortMessage(etFatalError, $203);
+            PortMessage(TksComPort.etFatalError, $203);
             Exit;
           end;
         end;
@@ -540,7 +611,7 @@ begin
   except
     on E:Exception do begin
 //      FInternalError:= 1;
-      PortMessage(etFatalError, $204);
+      PortMessage(TksComPort.etFatalError, $204);
       raise;
     end;
   end;
@@ -564,13 +635,48 @@ end;
 
 destructor TksComPort.Destroy;
 begin
+  Close;
   Classes.DeallocateHWnd(FWndHandle);
   inherited Destroy;
 end;
 
 procedure TksComPort.HandleMessage(Msg: TMessage);
+var
+  Count: Integer;
+//  TmpPtr: PByte;
+//  TmpCount: Integer;
+  Stop: Boolean;
+
 begin
+  if FPendingRead and (Msg.WParam = etCommDataReady) then begin
+    Count:= Read(FPendingPtr^, FPendingCount);
+    Stop:= ReadStop(Count);
+    Inc(FPendingPtr, Count);
+    Dec(FPendingCount, Count);
+    FPendingRead:= (FPendingCount > 0) and not Stop;
+    if not FPendingRead then begin
+      UpdateTimer(0);
+      if (Count < Msg.LParam) then
+        PortMessage(etCommDataReady, Msg.LParam - Count);
+    end;
+    Msg.Result:= 0;
+    Exit;
+  end;
+
+  if FPendingWrite and (Msg.WParam = etWriteBufEmpty) then begin
+    FPendingWrite:= FPendingCount > Msg.LParam;
+    if FPendingWrite then begin
+      Dec(FPendingCount, Msg.LParam);
+    end
+    else begin
+      UpdateTimer(0);
+    end;
+    Msg.Result:= 0;
+    Exit;
+  end;
+
   Msg.Result:= 1;
+//  if (Msg.Result <> 0) and Assigned(FOnMessage) then FOnMessage(Self, Msg);
   if Assigned(FOnMessage) then FOnMessage(Self, Msg);
   if Msg.Result <> 0 then begin
     case Msg.WParam of
@@ -648,6 +754,11 @@ begin
   end;
 end;
 
+procedure TksComPort.PortMessage(Code, SubCode: Integer);
+begin
+  PostMessage(FWndHandle, MsgID, Code, SubCode);
+end;
+
 function TksComPort.Read(var Buf; Count: Integer): Integer;
 begin
   if (FPortHandle = INVALID_HANDLE_VALUE) or (Count <= 0)
@@ -655,7 +766,63 @@ begin
     else Result:= FRBuffer.Read(Buf, Count);
 end;
 
-function TksComPort.Write(var Buf; Count: Integer): Integer;
+function TksComPort.Read(var Buf; Count: Integer; TimeOut: LongWord): Integer;
+//var
+//  BytesToReceive: Integer;
+//  BytesReceived: Integer;
+
+begin
+  FStopPos:= -1;
+  if (FPortHandle = INVALID_HANDLE_VALUE) or (Count <= 0) then begin
+    Result:= 0;
+    Exit;
+  end
+  else begin
+    Result:= FRBuffer.Read(Buf, Count);
+    if (Result = Count) or (TimeOut = 0) then Exit;
+    FPendingRead:= True;
+    try
+      FPendingPtr:= @Buf;
+      if not ReadStop(Result) then begin
+        UpdateTimer(TimeOut);
+        Inc(FPendingPtr, Result);
+        FPendingCount:= Count - Result;
+        repeat
+//          Application.HandleMessage;
+          Application.ProcessMessages;
+        until FTimerFired or not FPendingRead;
+        Result:= Count - FPendingCount;
+      end;
+      if FStopPos > 0 then FStopPos:= Result - FStopPos;
+    finally
+      FPendingRead:= False;
+    end;
+  end;
+end;
+
+function TksComPort.ReadStop(Count: Integer): Boolean;
+var
+  TmpPtr: PByte;
+  Stop: Boolean;
+
+begin
+  Stop:= False;
+  if Assigned(FOnReadStop) then begin
+    TmpPtr:= FPendingPtr;
+    while (Count > 0) do begin
+      FOnReadStop(Self, TmpPtr^, Stop);
+      if Stop then begin
+        FStopPos:= Count;
+        Break;
+      end;
+      Inc(TmpPtr);
+      Dec(Count);
+    end;
+  end;
+  Result:= Stop;
+end;
+
+function TksComPort.Write(const Buf; Count: Integer): Integer;
 begin
   if (FPortHandle = INVALID_HANDLE_VALUE) or (Count <= 0)
     then Result:= 0
@@ -663,9 +830,41 @@ begin
   SetEvent(FWriteEvent);
 end;
 
-function TksComPort.Active: Boolean;
+function TksComPort.Write(const Buf; Count: Integer; TimeOut: LongWord): Integer;
+begin
+  FPendingCount:= Write(Buf, Count);
+  if (FPendingCount = 0) then begin
+    Result:= 0;
+    Exit;
+  end
+  else begin
+    FPendingWrite:= True;
+    try
+      UpdateTimer(TimeOut);
+      repeat
+        Application.HandleMessage;
+//        Application.ProcessMessages;
+      until FTimerFired or not FPendingWrite;
+      Result:= Count - FPendingCount;
+    finally
+      FPendingWrite:= False;
+    end;
+  end;
+end;
+
+function TksComPort.Connected: Boolean;
 begin
   Result:= FPortHandle <> INVALID_HANDLE_VALUE;
+end;
+
+procedure TksComPort.ClearRBuf;
+begin
+  FRBuffer.Clear;
+end;
+
+procedure TksComPort.ClearWBuf;
+begin
+  FWBuffer.Clear;
 end;
 
 procedure TksComPort.Close;
@@ -733,6 +932,7 @@ var
   DCB: TDCB;
 
 begin
+  FBaudRate:= Value;
   if GetPortState(DCB) then begin
     DCB.BaudRate:= FBaudRate;
     SetCommState(FPortHandle, DCB);
@@ -751,38 +951,38 @@ begin
   end;
 end;
 
-procedure TksComPort.SetParity(const Value: TksCommParity);
+procedure TksComPort.SetParity(const Value: Byte);
 var
   DCB: TDCB;
 
 begin
   FParity:= Value;
   if GetPortState(DCB) then begin
-    DCB.Parity:= Byte(FParity);
+    DCB.Parity:= FParity;
     SetCommState(FPortHandle, DCB);
   end;
 end;
 
-procedure TksComPort.SetStopBits(const Value: TksCommStopBits);
+procedure TksComPort.SetStopBits(const Value: Byte);
 var
   DCB: TDCB;
 
 begin
   FStopBits:= Value;
   if GetPortState(DCB) then begin
-    DCB.StopBits:= Byte(FStopBits);
+    DCB.StopBits:= FStopBits;
     SetCommState(FPortHandle, DCB);
   end;
 end;
 
-procedure TksComPort.SetRTSControl(const Value: TksCommRTSControl);
+procedure TksComPort.SetRTSControl(const Value: LongWord);
 var
   DCB: TDCB;
 
 begin
   FRTSControl:= Value;
   if GetPortState(DCB) then begin
-    DCB.Flags:= (DCB.Flags and $FFFFFFCF) or LongWord(Ord(Value) shl 4);
+    DCB.Flags:= (DCB.Flags and $FFFFFFCF) or (Value shl 4);
     SetCommState(FPortHandle, DCB);
   end;
 end;
@@ -799,14 +999,14 @@ begin
   end;
 end;
 
-procedure TksComPort.SetDTRControl(const Value: TksCommDTRControl);
+procedure TksComPort.SetDTRControl(const Value: LongWord);
 var
   DCB: TDCB;
 
 begin
   FDTRControl:= Value;
   if GetPortState(DCB) then begin
-    DCB.Flags:= (DCB.Flags and $FFFFCFFF) or LongWord(Ord(Value) shl 12);
+    DCB.Flags:= (DCB.Flags and $FFFFCFFF) or (Value shl 12);
     SetCommState(FPortHandle, DCB);
   end;
 end;
@@ -858,28 +1058,38 @@ procedure TksComPort.UpdateDCB(var DCB: TDCB);
 begin
   DCB.BaudRate:= FBaudRate;
   DCB.ByteSize:= FByteSize;
-  DCB.Parity:= Byte(FParity);
-  DCB.StopBits:= Byte(FStopBits);
+  DCB.Parity:= FParity;
+  DCB.StopBits:= FStopBits;
   DCB.Flags:= (DCB.Flags and $FFFF8001)
-      or (LongWord(FDTRControl) shl 4) or (LongWord(FRTSControl) shl 12);
+              or (FDTRControl shl 4) or (FRTSControl shl 12);
   if FParityCheck then DCB.Flags:= DCB.Flags or $02;
   if FCTSControl then DCB.Flags:= DCB.Flags or $04;
   if FDSRControl then DCB.Flags:= DCB.Flags or $08;
-  if FDSRSensitivity then DCB.Flags:= DCB.Flags or $0040;
+  if FDSRSensitivity then DCB.Flags:= DCB.Flags or $40;
 end;
 
 procedure TksComPort.UpdateProperties(const DCB: TDCB);
 begin
   FBaudRate:= DCB.BaudRate;
   FByteSize:= DCB.ByteSize;
-  FParity:= TksCommParity(DCB.Parity);
-  FStopBits:= TksCommStopBits(DCB.StopBits);
+  FParity:= DCB.Parity;
+  FStopBits:= DCB.StopBits;
   FParityCheck:= DCB.Flags and $02 <> 0;
   FCTSControl:= DCB.Flags and $04 <> 0;
   FDSRControl:= DCB.Flags and $08 <> 0;
-  FDTRControl:= TksCommDTRControl((DCB.Flags shr 4) and $03);
+  FDTRControl:= (DCB.Flags shr 4) and $03;
   FDSRSensitivity:= DCB.Flags and $40 <> 0;
-  FRTSControl:= TksCommRTSControl((DCB.Flags shr 12) and $03);
+  FRTSControl:= (DCB.Flags shr 12) and $03;
+end;
+
+procedure TksComPort.UpdateTimer(TimeOut: LongWord);
+begin
+  KillTimer(FWndHandle, 1);
+  FTimerFired:= False;
+  if (TimeOut <> 0) and (TimeOut <> INFINITE) then begin
+    if SetTimer(FWndHandle, 1, TimeOut, nil) = 0 then
+      raise EOutOfResources.Create(SNoTimers);
+  end;
 end;
 
 procedure TksComPort.WndProc(var Msg: TMessage);
@@ -887,6 +1097,14 @@ begin
   if Msg.Msg = MsgID then begin
     try
       HandleMessage(Msg);
+    except
+      Application.HandleException(Self);
+    end
+  end
+  else if Msg.Msg = WM_TIMER then begin
+    try
+      UpdateTimer(0);
+      FTimerFired:= True;
     except
       Application.HandleException(Self);
     end

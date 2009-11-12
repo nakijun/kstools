@@ -44,10 +44,6 @@ object frmMain: TfrmMain
       TabOrder = 0
       object tsText: TTabSheet
         Caption = 'Text'
-        ExplicitLeft = 0
-        ExplicitTop = 0
-        ExplicitWidth = 0
-        ExplicitHeight = 0
         object MemoText: TMemo
           Left = 0
           Top = 0
@@ -78,10 +74,6 @@ object frmMain: TfrmMain
       object tsLog: TTabSheet
         Caption = 'Log'
         ImageIndex = 2
-        ExplicitLeft = 0
-        ExplicitTop = 0
-        ExplicitWidth = 0
-        ExplicitHeight = 0
         object MemoLog: TMemo
           Left = 0
           Top = 0
@@ -185,8 +177,22 @@ object frmMain: TfrmMain
       Caption = 'ToolButton7'
       Style = tbsSeparator
     end
-    object chbCR: TCheckBox
+    object ToolButton8: TToolButton
       Left = 161
+      Top = 0
+      Caption = 'ToolButton8'
+      OnClick = ToolButton8Click
+    end
+    object ToolButton9: TToolButton
+      Left = 184
+      Top = 0
+      Width = 8
+      Caption = 'ToolButton9'
+      ImageIndex = 0
+      Style = tbsSeparator
+    end
+    object chbCR: TCheckBox
+      Left = 192
       Top = 0
       Width = 40
       Height = 22
@@ -194,7 +200,7 @@ object frmMain: TfrmMain
       TabOrder = 1
     end
     object chbSendHex: TCheckBox
-      Left = 201
+      Left = 232
       Top = 0
       Width = 72
       Height = 22
