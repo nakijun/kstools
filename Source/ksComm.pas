@@ -2,7 +2,7 @@
 { *                    ksTools Library                      * }
 { *       Copyright (c) Sergey Kasandrov 1997, 2009         * }
 { *       -----------------------------------------         * }
-{ *      Blog: http://sergworks.wordpress.com/kstools       * }
+{ *         http://sergworks.wordpress.com/kstools          * }
 { *********************************************************** }
 
 unit ksComm;
@@ -74,6 +74,11 @@ type
     CE_FRAME = 8;         { Receive Framing error }
     CE_BREAK = $10;       { Break Detected }
     CE_TXFULL = $100;     { TX Queue is full }
+    CE_PTO = $200;        { LPTx Timeout }
+    CE_IOE = $400;        { LPTx I/O Error }
+    CE_DNS = $800;        { LPTx Device not selected }
+    CE_OOP = $1000;       { LPTx Out-Of-Paper }
+    CE_MODE = $8000;      { Requested mode unsupported }
 
                       { Communications Events, copied from Windows.pas }
     EV_RXCHAR = 1;        { Any Character received }
@@ -643,8 +648,6 @@ end;
 procedure TksComPort.HandleMessage(Msg: TMessage);
 var
   Count: Integer;
-//  TmpPtr: PByte;
-//  TmpCount: Integer;
   Stop: Boolean;
 
 begin
@@ -669,6 +672,7 @@ begin
       Dec(FPendingCount, Msg.LParam);
     end
     else begin
+      FPendingCount:= 0;
       UpdateTimer(0);
     end;
     Msg.Result:= 0;
@@ -767,10 +771,6 @@ begin
 end;
 
 function TksComPort.Read(var Buf; Count: Integer; TimeOut: LongWord): Integer;
-//var
-//  BytesToReceive: Integer;
-//  BytesReceived: Integer;
-
 begin
   FStopPos:= -1;
   if (FPortHandle = INVALID_HANDLE_VALUE) or (Count <= 0) then begin

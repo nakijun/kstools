@@ -1,20 +1,32 @@
 current version
 ---------------
+
+version 0.30
+---------------
++ added ksMath unit
+  (Base-2 Fast Fourier Transform, Fast Correlation);
++ added FFTTests project
+  (unit tests for FFT procedures from ksMath).
+ 
+version 0.20
+---------------
+  TksComPort changes:
 + added Read method override;
 + added Write method override;
 + added OnReadStop event;
 + added StopPos property;
 + added Handle property;
 + added ClearRBuf and ClearWBuf methods;
++ fixed SetBaudrate error;
   Active method is renamed Connected;
-  Enumeration types are replaced by class constants
+  Enumeration types are replaced by class constants.
 
 verion 0.10
 -----------
-+ added Delphi 2007 support
++ added Delphi 2007 support.
 
 initial checkin
 ---------------
 TksComPort component for Delphi 2009;
-Terminal app to test TksComPort
+Terminal app to test TksComPort.
 ---------------
