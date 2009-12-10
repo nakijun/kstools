@@ -2,7 +2,7 @@
 { *                    ksTools Library                      * }
 { *       Copyright (c) Sergey Kasandrov 1997, 2009         * }
 { *       -----------------------------------------         * }
-{ *      Blog: http://sergworks.wordpress.com/kstools       * }
+{ *         http://sergworks.wordpress.com/kstools          * }
 { *********************************************************** }
 
 unit ksClasses;

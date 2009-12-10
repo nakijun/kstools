@@ -18,9 +18,9 @@ Step 1. Compile runtime package
 
 Step 2 [Optional]. Copy runtime package to the system folder
 ------------------------------------------------------------
-Copy ksToolsR*.bpl file from the $(BDSCOMMONDIR)\Bpl folder (eg. "c:\Documents and Settings\All Users\Documents\RAD Studio\5.0\Bpl\" for Delphi 2007 on Windows XP) to the windows system folder (eg. "c:\Windows\System32" on Windows XP).
-
 Warning: this step is required only if you want to compile your projects with runtime packages. Otherwise this step is NOT recommended.
+
+Copy ksToolsR*.bpl file from the $(BDSCOMMONDIR)\Bpl folder (eg. "c:\Documents and Settings\All Users\Documents\RAD Studio\5.0\Bpl\" for Delphi 2007 on Windows XP) to the windows system folder (eg. "c:\Windows\System32" on Windows XP).
 
 Step 3. Compile and install designtime package
 ----------------------------------------------
