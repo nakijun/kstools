@@ -1,10 +1,10 @@
 Installation instructions.
 
 ksTools includes the runtime package ksToolsR and the designtime package ksToolsD.
-The packages are in the subfolders corresponding the Delphi version (D2007 or D2009).
+The packages are in the subfolders corresponding the Delphi version (D2007, D2009 or D2010).
 
 The packages are preconfigured with the following options:
- - LIBSUFFIX directive is set to the corresponding Delphi version (110 for D2007, 120 for D2009);
+ - LIBSUFFIX directive is set to the corresponding Delphi version (110 for D2007, 120 for D2009, 140 for D2010);
  - Unit Output Directory is set to $(BDSCOMMONDIR)\Dcp.
 
 Perform the following steps to compile and install the ksTools packages:

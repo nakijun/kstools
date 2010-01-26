@@ -46,6 +46,11 @@ type
     procedure TestTwoA(Data1, Data2: PRealArray; Count: Integer);
     procedure TestTwoF(Func1, Func2: TRealFunc; Count: Integer);
     procedure TestTwoG(Func1, Func2: TRealFunc; Count: Integer);
+    procedure TestSinF(Func: TRealFunc; Count: Integer);
+    procedure TestCos1A(Data: PRealArray; Count: Integer);
+    procedure TestCos1F(Func: TRealFunc; Count: Integer);
+    procedure TestCos2A(Data: PRealArray; Count: Integer);
+    procedure TestCos2F(Func: TRealFunc; Count: Integer);
     procedure TestCorrA(Data1, Data2: PRealArray; Count: Integer);
     procedure TestCorrF(Func1, Func2: TRealFunc; Count: Integer);
     procedure TestAutoCorrA(Data: PRealArray; Count: Integer);
@@ -73,6 +78,9 @@ type
     procedure TestAutoCorrF0;
     procedure TestSpectrumA0;
     procedure TestSpectrumF0;
+    procedure TestSinF0;
+    procedure TestCos1A0;
+    procedure TestCos2A0;
   end;
 
 implementation
@@ -131,6 +139,83 @@ begin
       Result[M]:= Result[M] + Func(N) * TksComplex.Exp(Arg);
     end;
   end;
+end;
+
+function SinDFT(Func: TRealFunc; Count: Integer): TDynRealArray; overload;
+var
+  M, N: Integer;
+  Arg: Extended;
+
+begin
+  SetLength(Result, Count);
+  for M:= 0 to Count - 1 do begin
+    Result[M]:= 0;
+    for N:= 0 to Count - 1 do begin
+      Arg:= (Pi * N * M) / Count;
+      Result[M]:= Result[M] + Func(N) * Sin(Arg);
+    end;
+  end;
+end;
+
+{ === First Form of Cosine Transform === }
+
+function Cos1DFT(Func: TRealFunc; Count: Integer): TDynRealArray; overload;
+var
+  K, N: Integer;
+  Arg: Extended;
+
+begin
+  SetLength(Result, Count + 1);
+  for K:= 0 to Count do begin
+    if Odd(K) then
+      Result[K]:= 0.5 * (Func(0) - Func(Count))
+    else
+      Result[K]:= 0.5 * (Func(0) + Func(Count));
+    for N:= 1 to Count - 1 do begin
+      Arg:= (Pi * N * K) / Count;
+      Result[K]:= Result[K] + Func(N) * Cos(Arg);
+    end;
+  end;
+end;
+
+function Cos1DFT(Data: PRealArray; Count: Integer): TDynRealArray; overload;
+begin
+  Result:= Cos1DFT(
+    function(N: Integer): Extended
+    begin
+      Result:= Data[N];
+    end,
+    Count);
+end;
+
+{ === Second Form of Cosine Transform === }
+
+function Cos2DFT(Func: TRealFunc; Count, Sign: Integer): TDynRealArray; overload;
+var
+  K, N: Integer;
+  Arg: Extended;
+
+begin
+  SetLength(Result, Count);
+  for K:= 0 to Count - 1 do begin
+    Result[K]:= 0;
+    for N:= 0 to Count - 1 do begin
+      Arg:= (Pi * (N + 0.5) * K) / Count;
+      Result[K]:= Result[K] + Func(N) * Cos(Arg);
+    end;
+  end;
+  if Sign < 0 then Result[0]:= 0.5 * Result[0];
+end;
+
+function Cos2DFT(Data: PRealArray; Count, Sign: Integer): TDynRealArray; overload;
+begin
+  Result:= Cos2DFT(
+    function(N: Integer): Extended
+    begin
+      Result:= Data[N];
+    end,
+    Count,
+    Sign);
 end;
 
 function ComplexArray(Data: PComplexArray; Count: Integer): TDynComplexArray;
@@ -363,6 +448,130 @@ begin
     CheckEquals(DFTData[Count - M].Im, - Sign * FFTData[2*M + 1], 1E-15)
   end;
 
+end;
+
+procedure TTestFFT.TestSinF(Func: TRealFunc; Count: Integer);
+var
+  DFTData, FFTData: TDynRealArray;
+  N: Integer;
+
+begin
+  DFTData:= SinDFT(Func, Count);
+  FFTData:= RealArray(Func, Count);
+  ksMath.SinFFT(FFTData, Count);
+  for N:= 0 to Count - 1 do
+    CheckEquals(DFTData[N], FFTData[N], 1E-15);
+  ksMath.SinFFT(FFTData, Count);
+  for N:= 0 to Count - 1 do
+    CheckEquals(Func(N) * Count / 2, FFTData[N], 1E-15);
+end;
+
+procedure TTestFFT.TestCos1F(Func: TRealFunc; Count: Integer);
+var
+  DFTData, FFTData: TDynRealArray;
+  N: Integer;
+
+begin
+  DFTData:= Cos1DFT(Func, Count);
+  FFTData:= RealArray(Func, Count + 1);
+  ksMath.Cos1FFT(FFTData, Count);
+  for N:= 0 to Count do
+    CheckEquals(DFTData[N], FFTData[N], 1E-15);
+  ksMath.Cos1FFT(FFTData, Count);
+  for N:= 0 to Count do
+    CheckEquals(Func(N) * Count / 2, FFTData[N], 1E-15);
+end;
+
+procedure TTestFFT.TestCos1A(Data: PRealArray; Count: Integer);
+begin
+  TestCos1F(
+    function(N: Integer): Extended
+    begin
+      Result:= Data[N];
+    end,
+    Count);
+end;
+
+procedure TTestFFT.TestCos1A0;
+const
+  Arr1: packed array[0..4] of Extended = (1.2, 0.34, 0.55, -0.37, 0.1);
+  Arr2: packed array[0..8] of Extended = (1.2, 0.34, 0.55, -0.37, 0.1,
+                                         -0.4, 1.03, 0.11, -0.7);
+  Arr3: packed array[0..8] of Extended = (0.2, 1.34, 0.33, -0.17, 0.3,
+                                         -0.4, 1.03, 0.11, -0.7);
+
+begin
+  TestCos1A(@Arr1, Length(Arr1) - 1);
+  TestCos1A(@Arr2, Length(Arr2) - 1);
+  TestCos1A(@Arr3, Length(Arr3) - 1);
+end;
+
+{ === Second Form of Cosine Transform Tests === }
+
+procedure TTestFFT.TestCos2F(Func: TRealFunc; Count: Integer);
+var
+  DFTData, FFTData: TDynRealArray;
+  N: Integer;
+
+begin
+                                      // test forward transform
+  DFTData:= Cos2DFT(Func, Count, 0);
+  FFTData:= RealArray(Func, Count);
+  ksMath.Cos2FFT(FFTData, Count, 0);
+  for N:= 0 to Count - 1 do
+    CheckEquals(DFTData[N], FFTData[N], 1E-15);
+                                      // test inverse transform
+  ksMath.Cos2FFT(FFTData, Count, -1);
+  for N:= 0 to Count - 1 do
+    CheckEquals(Func(N) * Count / 2, FFTData[N], 1E-15);
+end;
+
+procedure TTestFFT.TestCos2A(Data: PRealArray; Count: Integer);
+begin
+  TestCos2F(
+    function(N: Integer): Extended
+    begin
+      Result:= Data[N];
+    end,
+    Count);
+end;
+
+procedure TTestFFT.TestCos2A0;
+const
+  Arr1: packed array[0..3] of Extended = (1.2, 0.34, 0.55, -0.37);
+  Arr2: packed array[0..7] of Extended = (1.2, 0.34, 0.55, -0.37, 0.1,
+                                         -0.4, 1.03, 0.11);
+  Arr3: packed array[0..7] of Extended = (0.2, 1.34, 0.33, -0.17, 0.3,
+                                         -0.4, 1.03, 0.11);
+
+begin
+  TestCos2A(@Arr1, Length(Arr1));
+  TestCos2A(@Arr2, Length(Arr2));
+  TestCos2A(@Arr3, Length(Arr3));
+end;
+
+procedure TTestFFT.TestSinF0;
+begin
+  TestSinF( function(N: Integer): Extended
+    begin
+      Result:= Sin(pi / 4 * N) + 0.5 * Sin(pi / 2 * N);
+    end,
+    8);
+  TestSinF( function(N: Integer): Extended
+    begin
+      Result:= Sin(pi / 8 * N) + 0.25 * Sin(pi / 2 * N);
+    end,
+    16);
+  TestSinF( function(N: Integer): Extended
+    begin
+      Result:= Sin(pi / 8 * N) - 0.5 * Sin(pi / 4 * N);
+    end,
+    16);
+  TestSinF( function(N: Integer): Extended
+    begin
+      Result:= Sin(pi / 32 * N) - 0.2 * Sin(pi / 24 * N);
+    end,
+    8);
 end;
 
 procedure TTestFFT.TestRealB(Data: PRealArray; Count, Sign: Integer);

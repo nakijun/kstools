@@ -1,6 +1,6 @@
-{ *********************************************************** }
+п»ї{ *********************************************************** }
 { *                    ksTools Library                      * }
-{ *       Copyright (c) Sergey Kasandrov 1997, 2009         * }
+{ *       Copyright (c) Sergey Kasandrov 1997, 2010         * }
 { *       -----------------------------------------         * }
 { *         http://sergworks.wordpress.com/kstools          * }
 { *********************************************************** }
@@ -9,23 +9,44 @@ unit ksMath;
 
 interface
 
-uses Math;
+uses SysUtils, Math;
 
 type
   PksComplex = ^TksComplex;
   TksComplex = packed record
     Re, Im: Extended;
-    class operator Implicit(A: Extended): TksComplex;
-    class operator Add(A, B: TksComplex): TksComplex;
-    class operator Subtract(A, B: TksComplex): TksComplex;
-    class operator Multiply(A, B: TksComplex): TksComplex;
-    class operator Divide(A, B: TksComplex): TksComplex;
-    class function Exp(Value: TksComplex): TksComplex; static;
+
+    procedure Assign(R, I: Extended);
+
+    class operator Implicit(const A: Extended): TksComplex;
+
+    class operator Add(const A, B: TksComplex): TksComplex;
+    class operator Subtract(const A, B: TksComplex): TksComplex;
+    class operator Multiply(const A, B: TksComplex): TksComplex;
+    class operator Divide(const A, B: TksComplex): TksComplex;
+    class operator Negative(const A: TksComplex): TksComplex;
+
+    class operator Equal(const A, B: TksComplex): Boolean;
+    class operator NotEqual(const A, B: TksComplex): Boolean;
+
+    class function Abs(const AValue: TksComplex): Extended; static;
+    class function Phase(const AValue: TksComplex): Extended; static;
+    class function Sqr(const AValue: TksComplex): TksComplex; static;
+    class function Sqrt(const AValue: TksComplex): TksComplex; static;
+
+    class function Exp(const AValue: TksComplex): TksComplex; static;
+    class function Ln(const AValue: TksComplex): TksComplex; static;
+    class function Cos(const AValue: TksComplex): TksComplex; static;
+    class function Sin(const AValue: TksComplex): TksComplex; static;
+    class function Tan(const AValue: TksComplex): TksComplex; static;
   end;
 
 procedure ComplexFFT(Data: Pointer; DataSize: Integer; Sign: Integer = 0);
 procedure RealFFT(Data: Pointer; DataSize: Integer; Sign: Integer = 0);
 procedure RealFFT2(Data1, Data2: Pointer; fft1, fft2: Pointer; DataSize: Integer);
+procedure SinFFT(Data: Pointer; DataSize: Integer);
+procedure Cos1FFT(Data: Pointer; DataSize: Integer);
+procedure Cos2FFT(Data: Pointer; DataSize: Integer; Sign: Integer = 0);
 procedure RealCorr(Data1, Data2: Pointer; Corr: Pointer; DataSize: Integer);
 procedure RealAutoCorr(Data: Pointer; DataSize: Integer; Spectrum: Boolean = False);
 function MaxPowerOfTwo(Value: Integer): Integer;
@@ -35,38 +56,158 @@ function RFTPhase(Data: Pointer; DataSize, Index: Integer): Extended;
 
 implementation
 
-class operator TksComplex.Implicit(A: Extended): TksComplex;
+class operator TksComplex.Implicit(const A: Extended): TksComplex;
 begin
   Result.Re:= A;
   Result.Im:= 0;
 end;
 
-class operator TksComplex.Add(A, B: TksComplex): TksComplex;
+class operator TksComplex.Add(const A, B: TksComplex): TksComplex;
 begin
   Result.Re:= A.Re + B.Re;
   Result.Im:= A.Im + B.Im;
 end;
 
-class operator TksComplex.Subtract(A, B: TksComplex): TksComplex;
+class operator TksComplex.Subtract(const A, B: TksComplex): TksComplex;
 begin
-  Result.Re:= A.Re + B.Re;
-  Result.Im:= A.Im + B.Im;
+  Result.Re:= A.Re - B.Re;
+  Result.Im:= A.Im - B.Im;
 end;
 
-class operator TksComplex.Multiply(A, B: TksComplex): TksComplex;
+class operator TksComplex.Multiply(const A, B: TksComplex): TksComplex;
 begin
   Result.Re:= A.Re * B.Re - A.Im * B.Im;
   Result.Im:= A.Re * B.Im + A.Im * B.Re;
 end;
 
-class operator TksComplex.Divide(A, B: TksComplex): TksComplex;
+class operator TksComplex.Negative(const A: TksComplex): TksComplex;
+begin
+  Result.Re:= - A.Re;
+  Result.Im:= - A.Im;
+end;
+
+class operator TksComplex.Divide(const A, B: TksComplex): TksComplex;
 var
   D: Extended;
 
 begin
-  D:= Sqr(B.Re) + Sqr(B.Im);
+  D:= System.Sqr(B.Re) + System.Sqr(B.Im);
   Result.Re:= (A.Re * B.Re + A.Im * B.Im) / D;
   Result.Im:= (A.Im * B.Re - A.Re * B.Im) / D;
+end;
+
+class operator TksComplex.Equal(const A, B: TksComplex): Boolean;
+begin
+  Result:= (A.Re = B.Re) and (A.Im = B.Im);
+end;
+
+class operator TksComplex.NotEqual(const A, B: TksComplex): Boolean;
+begin
+  Result:= (A.Re <> B.Re) or (A.Im <> B.Im);
+end;
+
+{
+function TksComplex.IsZero: Boolean;
+begin
+  Result:= (Abs(Re) < UMinValue) and (Abs(Im) < UMinValue);
+end;
+}
+procedure TksComplex.Assign(R, I: Extended);
+begin
+  Re:= R;
+  Im:= I;
+end;
+
+class function TksComplex.Abs(const AValue: TksComplex): Extended;
+begin
+  Result:= System.Sqrt(System.Sqr(AValue.Re) + System.Sqr(AValue.Im));
+end;
+
+class function TksComplex.Phase(const AValue: TksComplex): Extended;
+begin
+  Result:= ArcTan2(AValue.Im, AValue.Re);
+end;
+
+class function TksComplex.Sqr(const AValue: TksComplex): TksComplex;
+begin
+  Result.Re:= System.Sqr(AValue.Re) - System.Sqr(AValue.Im);
+  Result.Im:= 2 * AValue.Re * AValue.Im;
+end;
+
+class function TksComplex.Sqrt(const AValue: TksComplex): TksComplex;
+var
+  A: Extended;
+
+begin
+  if AValue.Re >= 0 then begin
+    A:= Abs(AValue) + AValue.Re;
+    if A = 0 then begin
+      Result.Re:= 0;
+      Result.Im:= 0;
+    end
+    else begin
+      Result.Re:= System.Sqrt(A / 2);
+      Result.Im:= AValue.Im / System.Sqrt(A * 2);
+    end;
+  end
+  else begin
+    A:= Abs(AValue) - AValue.Re;
+    Result.Re:= System.Abs(AValue.Im) / System.Sqrt(A * 2);
+    if AValue.Im < 0 then
+      Result.Im:= - System.Sqrt(A / 2)
+    else
+      Result.Im:= System.Sqrt(A / 2);
+  end;
+end;
+
+class function TksComplex.Exp(const AValue: TksComplex): TksComplex;
+var
+  A: Extended;
+
+begin
+  A:= System.Exp(AValue.Re);
+  Result.Re:= A * System.Cos(AValue.Im);
+  Result.Im:= A * System.Sin(AValue.Im);
+end;
+
+class function TksComplex.Ln(const AValue: TksComplex): TksComplex;
+begin
+  Result.Re:= System.Ln(System.Sqr(AValue.Re) + System.Sqr(AValue.Im)) * 0.5;
+  Result.Im:= Math.ArcTan2(AValue.Im, AValue.Re);
+end;
+
+class function TksComplex.Cos(const AValue: TksComplex): TksComplex;
+var
+  Exp1, Exp2: Extended;
+
+begin
+  Exp1:= System.Exp(AValue.Im);
+  Exp2:= 1/Exp1;
+  Result.Re:= System.Cos(AValue.Re) * (Exp1 + Exp2) * 0.5;
+  Result.Im:= System.Sin(AValue.Re) * (Exp2 - Exp1) * 0.5;
+end;
+
+class function TksComplex.Sin(const AValue: TksComplex): TksComplex;
+var
+  Exp1, Exp2: Extended;
+
+begin
+  Exp1:= System.Exp(AValue.Im);
+  Exp2:= 1/Exp1;
+  Result.Re:= System.Sin(AValue.Re) * (Exp1 + Exp2) * 0.5;
+  Result.Im:= System.Cos(AValue.Re) * (Exp1 - Exp2) * 0.5;
+end;
+
+class function TksComplex.Tan(const AValue: TksComplex): TksComplex;
+var
+  A, Exp1, Exp2: Extended;
+
+begin
+  Exp1:= System.Exp(2 * AValue.Im);
+  Exp2:= 1/Exp1;
+  A:= System.Cos(2 * AValue.Re) + (Exp1 + Exp2) * 0.5;
+  Result.Re:= System.Sin(2.0 * AValue.Re) / A;
+  Result.Im:= (Exp1 - Exp2) * 0.5 / A;
 end;
 
 type
@@ -75,18 +216,6 @@ type
 
   PDArray = ^TDArray;
   TDArray = array[0..$FFFFFF] of Extended;
-
-class function TksComplex.Exp(Value: TksComplex): TksComplex;
-var
-  A: Extended;
-
-begin
-  A:= System.Exp(Value.Re);
-  Result.Re:= A * Cos(Value.Im);
-  Result.Im:= A * Sin(Value.Im);
-end;
-
-(* ************************************************************************ *)
 
 procedure ComplexFFT(Data: Pointer; DataSize: Integer; Sign: Integer = 0);
 var
@@ -97,12 +226,12 @@ var
   WPR, WPI, WR, WI: Extended;
 
 begin
-                    // Бит - реверсивная перестановка исходных данных
+                    // Р‘РёС‚ - СЂРµРІРµСЂСЃРёРІРЅР°СЏ РїРµСЂРµСЃС‚Р°РЅРѕРІРєР° РёСЃС…РѕРґРЅС‹С… РґР°РЅРЅС‹С…
   I:= 0;
   J:= 0;
   while (I < DataSize - 1) do begin
     if (J > I) then begin
-      Tmp:= PCArray(Data)^[I];        // перестановка комплексных чисел
+      Tmp:= PCArray(Data)^[I];        // РїРµСЂРµСЃС‚Р°РЅРѕРІРєР° РєРѕРјРїР»РµРєСЃРЅС‹С… С‡РёСЃРµР»
       PCArray(Data)^[I]:= PCArray(Data)^[J];
       PCArray(Data)^[J]:= Tmp;
     end;
@@ -129,13 +258,13 @@ begin
     while M < L do begin
       I:= M;
       while I < DataSize do begin
-        P2:= @PCArray(Data)^[I + L];      // умножаем 2-ю точку
-        TR:= WR * P2^.Re - WI * P2^.Im;   //  на поворачивающий множитель
+        P2:= @PCArray(Data)^[I + L];      // СѓРјРЅРѕР¶Р°РµРј 2-СЋ С‚РѕС‡РєСѓ
+        TR:= WR * P2^.Re - WI * P2^.Im;   //  РЅР° РїРѕРІРѕСЂР°С‡РёРІР°СЋС‰РёР№ РјРЅРѕР¶РёС‚РµР»СЊ
         TI:= WR * P2^.Im + WI * P2^.Re;
         P1:= @PCArray(Data)^[I];
-        P2^.Re:= P1^.Re - TR;             // 2-я точка
+        P2^.Re:= P1^.Re - TR;             // 2-СЏ С‚РѕС‡РєР°
         P2^.Im:= P1^.Im - TI;
-        P1^.Re:= P1^.Re + TR;             // 1-я точка
+        P1^.Re:= P1^.Re + TR;             // 1-СЏ С‚РѕС‡РєР°
         P1^.Im:= P1^.Im + TI;
         Inc(I, Step);
       end;
@@ -235,7 +364,7 @@ begin
       Re:= P.Re;
       Im:= M.Im;
     end;
-    with P2^ do begin       // комплесно сопр. P1^
+    with P2^ do begin       // РєРѕРјРїР»РµСЃРЅРѕ СЃРѕРїСЂ. P1^
       Re:= P.Re;
       Im:= -M.Im;
     end;
@@ -248,6 +377,177 @@ begin
       Im:= M.Re;
     end;
   end;
+end;
+
+procedure SinFFT(Data: Pointer; DataSize: Integer);
+var
+  N: Integer;
+  Theta, Y1, Y2, Sum: Extended;
+  WT, WPR, WPI, WR, WI: Extended;
+
+begin
+                          // initialize trigonometric recurrence
+  WI:= 0.0;
+  WR:= 1.0;
+  Theta:= Pi/DataSize;
+  WT:= Sin(0.5 * Theta);
+  WPR:= -2.0 * WT * WT;   // = Cos(Theta) - 1
+  WPI:= Sin(Theta);
+                          // PDArray(Data)^[0] must be zero for Sine Transform
+  PDArray(Data)^[0]:= 0.0;
+                          // construct the auxiliary array from the Data
+  for N:= 1 to DataSize shr 1 do begin
+// calculate Sin(N * Theta) recursively:
+//   Sin(N * Theta) = Sin((N-1) * Theta) + Sin((N-1) * Theta) * WPR
+//                                       + Cos((N-1) * Theta) * WPI
+    WT:= WR;
+    WR:= WR*WPR - WI*WPI + WR;    // = Cos(N * Theta)
+    WI:= WI*WPR + WT*WPI + WI;    // = Sin(N * Theta)
+    Y1:= WI*(PDArray(Data)^[N] + PDArray(Data)^[DataSize - N]);
+    Y2:= 0.5*(PDArray(Data)^[N] - PDArray(Data)^[DataSize - N]);
+    PDArray(Data)^[N]:= Y1 + Y2;
+    PDArray(Data)^[DataSize - N]:= Y1 - Y2;
+  end;
+                        // FFT the auxiliary array
+  RealFFT(Data, DataSize, 0);
+  PDArray(Data)^[0]:= PDArray(Data)^[0] * 0.5;
+  PDArray(Data)^[1]:= 0;
+  Sum:= 0.0;
+  for N:= 0 to DataSize shr 1 - 1 do begin
+    Sum:= Sum + PDArray(Data)^[2*N];
+    PDArray(Data)^[2*N]:= PDArray(Data)^[2*N + 1];
+    PDArray(Data)^[2*N+1]:= Sum;
+  end;
+end;
+
+procedure Cos1FFT(Data: Pointer; DataSize: Integer);
+var
+  N: Integer;
+  Theta, Y1, Y2, Sum: Extended;
+  WT, WPR, WPI, WR, WI: Extended;
+
+begin
+                          // initialize trigonometric recurrence
+  WI:= 0.0;               // = Sin(0 * Theta)
+  WR:= 1.0;               // = Cos(0 * Theta)
+  Theta:= Pi/DataSize;
+  WT:= Sin(0.5 * Theta);
+  WPR:= -2.0 * WT * WT;   // = Cos(Theta) - 1
+  WPI:= Sin(Theta);
+
+  Sum:= 0.5*(PDArray(Data)^[0] - PDArray(Data)^[DataSize]);
+  PDArray(Data)^[0]:= 0.5*(PDArray(Data)^[0] + PDArray(Data)^[DataSize]);
+  for N:= 1 to DataSize shr 1 - 1 do begin
+    WT:= WR;
+    WR:= WR*WPR - WI*WPI + WR;    // = Cos(N * Theta)
+    WI:= WI*WPR + WT*WPI + WI;    // = Sin(N * Theta)
+    Y1:= 0.5*(PDArray(Data)^[N] + PDArray(Data)^[DataSize - N]);
+    Y2:= PDArray(Data)^[N] - PDArray(Data)^[DataSize - N];
+    PDArray(Data)^[N]:= Y1 - WI * Y2;
+    PDArray(Data)^[DataSize - N]:= Y1 + WI * Y2;
+    Sum:= Sum + WR * Y2;
+  end;
+  RealFFT(Data, DataSize, 0);
+  PDArray(Data)^[DataSize]:= PDArray(Data)^[1];
+  PDArray(Data)^[1]:= Sum;
+  N:= 3;
+  while N < DataSize do begin
+    Sum:= Sum + PDArray(Data)^[N];
+    PDArray(Data)^[N]:= Sum;
+    N:= N + 2;
+  end;
+end;
+
+procedure Cos2FFT(Data: Pointer; DataSize: Integer; Sign: Integer = 0);
+var
+  N: Integer;
+  Theta, Y1, Y2, YT, Sum, Sum1: Extended;
+  WT, WPR, WPI, WR, WI, WR1, WI1: Extended;
+
+begin
+                          // initialize trigonometric recurrence
+  WI:= 0.0;               // = Sin(0 * Theta)
+  WR:= 1.0;               // = Cos(0 * Theta)
+  Theta:= Pi/DataSize;
+
+  WR1:= Cos(0.5 * Theta);
+  WI1:= Sin(0.5 * Theta);
+  WPR:= -2.0 * Sqr(WI1);
+  WPI:= Sin(Theta);
+  if (Sign >= 0) then begin     // Forward transform.
+    for N:= 0 to DataSize shr 1 - 1 do begin
+                                // Calculate the auxiliary function.
+      Y1:= 0.5 * (PDArray(Data)^[N] + PDArray(Data)^[DataSize - N - 1]);
+      Y2:= WI1 * (PDArray(Data)^[N] - PDArray(Data)^[DataSize - N - 1]);
+      PDArray(Data)^[N]:= Y1 + Y2;
+      PDArray(Data)^[DataSize - N - 1]:= Y1 - Y2;
+                                        // Carry out the recurrence.
+      WT:= WR1;
+      WR1:= WR1*WPR - WI1*WPI + WR1;    // = Cos(N * Theta)
+      WI1:= WI1*WPR + WT*WPI + WI1;     // = Sin(N * Theta)
+    end;
+                                // Transform the auxiliary function.
+    RealFFT(Data, DataSize, 0);
+
+    N:= 2;
+    while N < DataSize do begin
+      WT:= WR;
+      WR:= WR*WPR - WI*WPI + WR;    // = Cos(N * Theta)
+      WI:= WI*WPR + WT*WPI + WI;    // = Sin(N * Theta)
+      Y1:= PDArray(Data)^[N] * WR - PDArray(Data)^[N + 1] * WI;
+      Y2:= PDArray(Data)^[N + 1] * WR + PDArray(Data)^[N] * WI;
+      PDArray(Data)^[N]:= Y1;
+      PDArray(Data)^[N + 1]:= Y2;
+      Inc(N, 2);
+    end;
+
+    Sum:= 0.5 * PDArray(Data)^[1]; // Initialize recurrence for odd terms
+    N:= DataSize - 1;
+    while N > 0 do begin
+      Sum1:= Sum;
+      Sum:= Sum + PDArray(Data)^[N];
+      PDArray(Data)^[N]:= Sum1;
+      Dec(N, 2);
+    end;
+  end
+  else if (Sign < 0) then begin
+                                // Inverse transform.
+    YT:= PDArray(Data)^[DataSize - 1];
+    N:= DataSize - 1;
+    while N >= 3 do begin
+                                // Form difference of odd terms.
+      PDArray(Data)^[N]:= PDArray(Data)^[N - 2] - PDArray(Data)^[N];
+      Dec(N, 2);
+    end;
+    PDArray(Data)^[1]:= 2.0 * YT;
+
+                                    //Calculate Rk and Ik.
+    N:= 2;
+    while (N < DataSize) do begin
+      WT:= WR;
+      WR:= WR*WPR - WI*WPI + WR;    // = Cos(N * Theta)
+      WI:= WI*WPR + WT*WPI + WI;    // = Sin(N * Theta)
+      Y1:= PDArray(Data)^[N] * WR + PDArray(Data)^[N + 1] * WI;
+      Y2:= PDArray(Data)^[N + 1] * WR - PDArray(Data)^[N] * WI;
+      PDArray(Data)^[N]:= Y1;
+      PDArray(Data)^[N + 1]:= Y2;
+      Inc(N, 2);
+    end;
+    RealFFT(Data, DataSize, -1);
+
+                                    //Invert auxiliary array.
+    for N:= 0 to DataSize shr 1 - 1 do begin
+      Y1:= PDArray(Data)^[N] + PDArray(Data)^[DataSize - N - 1];
+      Y2:= (0.5/WI1) * (PDArray(Data)^[N] - PDArray(Data)^[DataSize - N - 1]);
+      PDArray(Data)^[N]:= 0.5*(Y1 + Y2);
+      PDArray(Data)^[DataSize - N - 1]:= 0.5*(Y1 - Y2);
+
+      WT:= WR1;
+      WR1:= WR1*WPR - WI1*WPI + WR1;    // = Cos(N * Theta)
+      WI1:= WI1*WPR + WT*WPI + WI1;     // = Sin(N * Theta)
+    end;
+  end;
+
 end;
 
 procedure RealCorr(Data1, Data2: Pointer; Corr: Pointer; DataSize: Integer);
@@ -269,10 +569,10 @@ begin
     end;
     ComplexFFT(fft1, DataSize, 0);
 
-    D:= 1 / (DataSize shr 1);         // нормализующий множитель
+    D:= 1 / (DataSize shr 1);         // РЅРѕСЂРјР°Р»РёР·СѓСЋС‰РёР№ РјРЅРѕР¶РёС‚РµР»СЊ
 
-// умножаем фурье-образ первой функции
-//   на комплесно-сопряжённый фурье-образ второй функции
+// СѓРјРЅРѕР¶Р°РµРј С„СѓСЂСЊРµ-РѕР±СЂР°Р· РїРµСЂРІРѕР№ С„СѓРЅРєС†РёРё
+//   РЅР° РєРѕРјРїР»РµСЃРЅРѕ-СЃРѕРїСЂСЏР¶С‘РЅРЅС‹Р№ С„СѓСЂСЊРµ-РѕР±СЂР°Р· РІС‚РѕСЂРѕР№ С„СѓРЅРєС†РёРё
 
     P1:= @PCArray(fft1)^[0];
     P2:= @PCArray(fft1)^[DataSize];   // out of bounds - that's OK
@@ -285,15 +585,15 @@ begin
       Dec(P2);                    // decremented - not out of bounds
       Inc(P3);
 
-// значение первой функции
+// Р·РЅР°С‡РµРЅРёРµ РїРµСЂРІРѕР№ С„СѓРЅРєС†РёРё
       C1.Re:= 0.5 * (P1^.Re + P2^.Re);
       C1.Im:= 0.5 * (P1^.Im - P2^.Im);
 
-// комплексно сопряжённое значение второй функции
+// РєРѕРјРїР»РµРєСЃРЅРѕ СЃРѕРїСЂСЏР¶С‘РЅРЅРѕРµ Р·РЅР°С‡РµРЅРёРµ РІС‚РѕСЂРѕР№ С„СѓРЅРєС†РёРё
       C2.Re:= 0.5 * (P1^.Im + P2^.Im);
       C2.Im:= 0.5 * (P1^.Re - P2^.Re);
 
-// первое умножается на второе:
+// РїРµСЂРІРѕРµ СѓРјРЅРѕР¶Р°РµС‚СЃСЏ РЅР° РІС‚РѕСЂРѕРµ:
 //   P3^:= (C1.Re, C1.Im) * (C2.Re, C2.Im);
 
       P3^.Re:= (C1.Re * C2.Re - C1.Im * C2.Im) * D;
