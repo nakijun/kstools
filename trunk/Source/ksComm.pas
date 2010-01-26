@@ -1,6 +1,6 @@
 { *********************************************************** }
 { *                    ksTools Library                      * }
-{ *       Copyright (c) Sergey Kasandrov 1997, 2009         * }
+{ *       Copyright (c) Sergey Kasandrov 1997, 2010         * }
 { *       -----------------------------------------         * }
 { *         http://sergworks.wordpress.com/kstools          * }
 { *********************************************************** }
@@ -24,6 +24,8 @@ type
   TksReadStopEvent = procedure(Sender: TObject; Value: Byte; var Stop: Boolean) of object;
 
 type
+  TksComLogger = class;
+
   TksComPort = class(TComponent)
   public const
                             { Event types }
@@ -95,12 +97,22 @@ type
     EV_EVENT1 = $800;     { Provider specific event 1 }
     EV_EVENT2 = $1000;    { Provider specific event 2 }
 
+  private type
+    TReadCache = record
+      Buffer: PByte;
+      BufSize: Integer;
+      UsedSize: Integer;
+//      function FreeSize: Integer;
+      procedure AllocBuffer(const ASize: Integer);
+//      function Read(var Buf; Count: Integer): Integer;
+    end;
   private
     FWndHandle: HWND;
     FPortName: string;
     FPortHandle: THandle;
     FRBuffer: TksRingBuffer;
     FWBuffer: TksRingBuffer;
+    FReadCache: TReadCache;
 
     FRXEvent: THandle;          // сигнал потоку чтения
                                 //   от потока мониторинга
@@ -135,7 +147,8 @@ type
     FPendingCount: Integer;
     FPendingPtr: PByte;
     FTimerFired: Boolean;
-    FStopPos: Integer;
+//    FStopPos: Integer;
+    FReadStopped: Boolean;
 
     FOnMessage: TksMessageEvent;
     FOnError: TksCommEvent;
@@ -150,6 +163,9 @@ type
     FOnSetCommState: TksCommStateEvent;
     FOnSetCommTimeouts: TksCommTimeoutsEvent;
     FOnSetCommMask: TksCommMaskEvent;
+
+    FLogger: TksComLogger;
+    procedure SetLogger(const Value: TksComLogger);
 
     const MsgID = WM_APP + 11;
     procedure WndProc(var Msg: TMessage);
@@ -173,7 +189,8 @@ type
   protected
     procedure HandleMessage(Msg: TMessage);
     procedure PortMessage(Code, SubCode: Integer);
-    function ReadStop(Count: Integer): Boolean;
+    function ReadFromCache(var Buf; Count: Integer): Integer;
+    function ReadStop(Count: Integer): Integer;
   public
     { Public declarations }
     constructor Create(AOwner: TComponent); override;
@@ -182,6 +199,9 @@ type
     procedure ClearRBuf;
     procedure ClearWBuf;
     procedure Close;
+
+    procedure LogData(AFlags: LongWord; const Buf; BufSize: Integer);
+
     function Connected: Boolean;
     function GetPortState(var DCB: TDCB): Boolean;
     function GetPortTimeouts(var Timeouts: TCommTimeouts): Boolean;
@@ -193,7 +213,8 @@ type
     function Write(const Buf; Count: Integer; TimeOut: LongWord): Integer; overload;
 
     property Handle: THandle read FPortHandle;
-    property StopPos: Integer read FStopPos;
+//    property StopPos: Integer read FStopPos;
+    property ReadStopped: Boolean read FReadStopped;
 
   published
     { Published declarations }
@@ -212,6 +233,7 @@ type
     property RTSControl: LongWord read FRTSControl write SetRTSControl default RTS_CONTROL_DISABLE;
     property DSRSensitivity: Boolean read FDSRSensitivity write SetDSRSensitivity default False;
 
+    property Logger: TksComLogger read FLogger write SetLogger;
 //    property ReadFileName: string read FReadName write FReadName;
     property OnMessage: TksMessageEvent read FOnMessage write FOnMessage;
     property OnReadOverflow: TksCommEvent read FOnReadOverflow write FOnReadOverflow;
@@ -225,6 +247,76 @@ type
     property OnSetCommState: TksCommStateEvent read FOnSetCommState write FOnSetCommState;
     property OnSetCommTimeouts: TksCommTimeoutsEvent read FOnSetCommTimeouts write FOnSetCommTimeouts;
     property OnSetCommMask: TksCommMaskEvent read FOnSetCommMask write FOnSetCommMask;
+  end;
+
+  TksComLogger = class
+  public const
+                                // Log Item Flags
+    lfMain  = 0;                // main thread
+    lfEvent = 1;                // event thread
+    lfRead  = 2;                // read thread
+    lfWrite = 3;                // write thread
+    lfComEvent = $10000000;     // communications event
+    lfComError = $20000000;     // communications error
+    lfSoftError = $40000000;    // software error like read overflow
+    lfFatalError = $80000000;   // fatal error
+  public type
+    PLogItem = ^TLogItem;
+    TLogItem = packed record
+      Size: LongWord;
+      Flags: LongWord;
+      Occured: TDateTime;
+      Data: record end;
+    end;
+//  private
+//    FPort: TksComPort;
+  protected
+    procedure LogData(AFlags: LongWord; const Buf; BufSize: Integer); virtual; abstract;
+  end;
+
+type
+  TksComStreamLogger = class(TksComLogger)
+  public type
+    PLogHeader = ^TLogHeader;
+    TLogHeader = packed record
+    StartTime: TDateTime;
+    StopTime: TDateTime;
+    SizeOfChar: LongWord;
+    CommentLen: LongWord;
+    Comment: record end;
+  end;
+  protected
+    FActive: Boolean;
+    FLock: array[0..2] of TRTLCriticalSection;
+    FStream: array[0..3] of TStream;
+    FItemCount: array[0..3] of Integer;
+    FStartTime: TDateTime;
+    FStopTime: TDateTime;
+    FComment: string;
+//    procedure Lock;
+//    procedure UnLock;
+    function CreateStream(Index: Integer): TStream; virtual; abstract;
+//    function ResetStream(Index: Integer): TStream; virtual;
+//    function LogStream(Index: Integer): TStream;
+    procedure SaveToStream(Target: TStream);
+    procedure LogData(AFlags: LongWord; const Buf; BufSize: Integer); override;
+  public
+    constructor Create;
+    destructor Destroy; override;
+    procedure Reset; virtual;
+    procedure SaveToFile(const AFileName: string);
+    property Active: Boolean read FActive write FActive;
+  end;
+
+  TksComMemoryLogger = class(TksComStreamLogger)
+  protected
+    function CreateStream(Index: Integer): TStream; override;
+
+//  public
+//    constructor Create;
+//    destructor Destroy; override;
+//    procedure InitStreams; override;
+//    procedure FreeStreams; override;
   end;
 
 implementation
@@ -305,6 +397,7 @@ begin
             WAIT_OBJECT_0: begin
               OK:= GetOverLappedResult(FOwner.FPortHandle, OL, Junk, False);
               ResetEvent(OL.hEvent);
+              FOwner.LogData(TksComLogger.lfEvent, EvtMask, SizeOf(LongWord));
             end;
 
             WAIT_OBJECT_0 + 1: begin
@@ -410,6 +503,8 @@ begin
           Errors:= Errors and FOwner.FErrorMask;
           if (Errors <> 0) then begin
             PortMessage(TksComPort.etCommError, Errors);
+            FOwner.LogData(TksComLogger.lfComError or TksComLogger.lfRead,
+                           Errors, SizeOf(LongWord));
           end;
 
           if Stat.cbInQue = 0 then Break;
@@ -622,6 +717,35 @@ begin
   end;
 end;
 
+{ TksComPort.TReadCache }
+
+procedure TksComPort.TReadCache.AllocBuffer(const ASize: Integer);
+begin
+  if BufSize <> ASize then begin
+    if BufSize > 0 then begin
+      FreeMem(Buffer, BufSize);
+      BufSize:= 0;
+    end;
+    if ASize > 0 then begin
+      GetMem(Buffer, ASize);
+      BufSize:= ASize;
+    end;
+  end;
+end;
+{
+function TksComPort.TReadCache.Read(var Buf; Count: Integer): Integer;
+begin
+  if Count <= 0 then Result:= 0
+  else begin
+    if Count > UsedSize then Count:= UsedSize;
+    Move(Buffer^, Buf, Count);
+    if UsedSize > Count then
+      Move(Buffer^[Count], Buffer^, UsedSize - Count);
+    Dec(UsedSize, Count);
+    Result:= Count;
+  end;
+end;
+}
 { TksComPort }
 
 constructor TksComPort.Create(AOwner: TComponent);
@@ -642,21 +766,22 @@ destructor TksComPort.Destroy;
 begin
   Close;
   Classes.DeallocateHWnd(FWndHandle);
+  Logger:= nil;
   inherited Destroy;
 end;
 
 procedure TksComPort.HandleMessage(Msg: TMessage);
 var
   Count: Integer;
-  Stop: Boolean;
+//  Stop: Boolean;
 
 begin
   if FPendingRead and (Msg.WParam = etCommDataReady) then begin
     Count:= Read(FPendingPtr^, FPendingCount);
-    Stop:= ReadStop(Count);
+//    Stop:= ReadStop(Count);
     Inc(FPendingPtr, Count);
     Dec(FPendingCount, Count);
-    FPendingRead:= (FPendingCount > 0) and not Stop;
+    FPendingRead:= (FPendingCount > 0) and not FReadStopped;
     if not FPendingRead then begin
       UpdateTimer(0);
       if (Count < Msg.LParam) then
@@ -695,6 +820,12 @@ begin
   end;
 end;
 
+procedure TksComPort.LogData(AFlags: LongWord; const Buf; BufSize: Integer);
+begin
+  if Assigned(FLogger) then
+    FLogger.LogData(AFlags, Buf, BufSize);
+end;
+
 function TksComPort.Open: Boolean;
 var
   DCB: TDCB;
@@ -718,6 +849,7 @@ begin
   if Result then begin
     FRBuffer:= TksRingBuffer.Create(FRBufSize);
     FWBuffer:= TksRingBuffer.Create(FWBufSize);
+    FReadCache.AllocBuffer(FRBufSize);
 
 { Signalled by Event Thread to Read Thread}
     FRXEvent:= CreateEvent(nil,
@@ -763,63 +895,93 @@ begin
   PostMessage(FWndHandle, MsgID, Code, SubCode);
 end;
 
-function TksComPort.Read(var Buf; Count: Integer): Integer;
-begin
-  if (FPortHandle = INVALID_HANDLE_VALUE) or (Count <= 0)
-    then Result:= 0
-    else Result:= FRBuffer.Read(Buf, Count);
-end;
+function TksComPort.ReadFromCache(var Buf; Count: Integer): Integer;
+var
+  BytesToTest, BytesTested: Integer;
 
-function TksComPort.Read(var Buf; Count: Integer; TimeOut: LongWord): Integer;
 begin
-  FStopPos:= -1;
-  if (FPortHandle = INVALID_HANDLE_VALUE) or (Count <= 0) then begin
-    Result:= 0;
-    Exit;
-  end
-  else begin
-    Result:= FRBuffer.Read(Buf, Count);
-    if (Result = Count) or (TimeOut = 0) then Exit;
-    FPendingRead:= True;
-    try
-      FPendingPtr:= @Buf;
-      if not ReadStop(Result) then begin
-        UpdateTimer(TimeOut);
-        Inc(FPendingPtr, Result);
-        FPendingCount:= Count - Result;
-        repeat
-//          Application.HandleMessage;
-          Application.ProcessMessages;
-        until FTimerFired or not FPendingRead;
-        Result:= Count - FPendingCount;
-      end;
-      if FStopPos > 0 then FStopPos:= Result - FStopPos;
-    finally
-      FPendingRead:= False;
+  Result:= 0;
+  if (FReadCache.UsedSize > 0) then begin
+    BytesToTest:= FReadCache.UsedSize;
+    if BytesToTest > Count then BytesToTest:= Count;
+    BytesTested:= ReadStop(BytesToTest);
+    if BytesTested > 0 then begin
+//      Result:= FReadCache.Read(Buf, BytesTested);
+      Move(FReadCache.Buffer^, Buf, BytesTested);
+      Dec(FReadCache.UsedSize, BytesTested);
+      if (FReadCache.UsedSize > 0) then
+        Move(PByteArray(FReadCache.Buffer)^[BytesTested], FReadCache.Buffer^,
+             FReadCache.UsedSize);
+      Result:= BytesTested;
     end;
   end;
 end;
 
-function TksComPort.ReadStop(Count: Integer): Boolean;
+function TksComPort.Read(var Buf; Count: Integer): Integer;
+var
+//  BytesToTest, BytesTested: Integer;
+  BufPtr: PByte;
+
+begin
+  Result:= 0;
+  FReadStopped:= False;
+  if (FPortHandle = INVALID_HANDLE_VALUE) or (Count <= 0) then Exit;
+  BufPtr:= @Buf;
+
+// Check if the data we read is already in read cache
+  Result:= ReadFromCache(Buf, Count);
+  if FReadStopped or (Result = Count) then Exit;
+  Inc(BufPtr, Result);
+
+// read to cache
+  FReadCache.UsedSize:= FRBuffer.Read(FReadCache.Buffer^, FReadCache.BufSize);
+
+  Inc(Result, ReadFromCache(BufPtr^, Count - Result));
+end;
+
+function TksComPort.Read(var Buf; Count: Integer; TimeOut: LongWord): Integer;
+begin
+  FReadStopped:= False;
+  if (FPortHandle = INVALID_HANDLE_VALUE) or (Count <= 0) then begin
+    Result:= 0;
+    Exit;
+  end;
+  Result:= Read(Buf, Count);
+  if (Result = Count) or (TimeOut = 0) or FReadStopped then Exit;
+  FPendingRead:= True;
+  try
+    FPendingPtr:= @Buf;
+    Inc(FPendingPtr, Result);
+    FPendingCount:= Count - Result;
+    UpdateTimer(TimeOut);
+    repeat
+      Application.HandleMessage;
+    until FTimerFired or not FPendingRead;
+    Result:= Count - FPendingCount;
+  finally
+    FPendingRead:= False;
+  end;
+end;
+
+function TksComPort.ReadStop(Count: Integer): Integer;
 var
   TmpPtr: PByte;
   Stop: Boolean;
 
 begin
   Stop:= False;
+  Result:= Count;
   if Assigned(FOnReadStop) then begin
-    TmpPtr:= FPendingPtr;
-    while (Count > 0) do begin
+    TmpPtr:= FReadCache.Buffer;
+    while (Count > 0) and not Stop do begin
       FOnReadStop(Self, TmpPtr^, Stop);
-      if Stop then begin
-        FStopPos:= Count;
-        Break;
-      end;
       Inc(TmpPtr);
       Dec(Count);
+//      if Stop then Break;
     end;
+    Result:= Result - Count;
   end;
-  Result:= Stop;
+  FReadStopped:= Stop;
 end;
 
 function TksComPort.Write(const Buf; Count: Integer): Integer;
@@ -883,6 +1045,7 @@ begin
     CloseHandle(FExitEvent);
 //    DeleteCriticalSection(FErrLock);
     CloseHandle(FPortHandle);
+    FReadCache.AllocBuffer(0);
     FRBuffer.Free;
     FWBuffer.Free;
 //    FReadLog.Free;
@@ -1011,6 +1174,12 @@ begin
   end;
 end;
 
+procedure TksComPort.SetLogger(const Value: TksComLogger);
+begin
+  if not Connected then
+    FLogger:= Value;
+end;
+
 procedure TksComPort.SetParityCheck(const Value: Boolean);
 var
   DCB: TDCB;
@@ -1111,6 +1280,277 @@ begin
   end
   else
     Msg.Result:= DefWindowProc(FWndHandle, Msg.Msg, Msg.WParam, Msg.LParam);
+end;
+
+{ TksComStreamLogger }
+
+constructor TksComStreamLogger.Create;
+var
+  I: Integer;
+
+begin
+  for I:= 0 to 2 do
+    InitializeCriticalSection(FLock[I]);
+  for I:= 0 to 3 do
+    FStream[I]:= CreateStream(I);
+  FActive:= True;
+end;
+
+destructor TksComStreamLogger.Destroy;
+var
+  I: Integer;
+
+begin
+  FActive:= False;
+  for I:= 0 to 3 do
+    FStream[I].Free;
+  for I:= 0 to 2 do
+    DeleteCriticalSection(FLock[I]);
+  inherited Destroy;
+end;
+
+{
+function TksComStreamLogger.ResetStream(Index: Integer): TStream;
+var
+  Stream: TStream;
+
+begin
+  Stream:= LogStream(Index);
+  if Assigned(Stream) then Stream.Position:= 0;
+end;
+}
+
+procedure TksComStreamLogger.Reset;
+var
+  I: Integer;
+  Stream: TStream;
+
+begin
+  for I:= 0 to 3 do begin
+    if I > 0 then
+      EnterCriticalSection(FLock[I-1]);
+    try
+      Stream:= FStream[I];
+      if Assigned(Stream) then Stream.Seek(0, soFromBeginning);
+      FItemCount[I]:= 0;
+    finally
+      if I > 0 then
+        LeaveCriticalSection(FLock[I-1]);
+    end;
+  end;
+end;
+
+{
+function TksComStreamLogger.LogStream(Index: Integer): TStream;
+begin
+  case Index of
+    0..3: Result:= FStream[Index];
+  else
+    Result:= nil;
+  end;
+end;
+}
+
+procedure CopyData(Source, Target: TStream; Count: Integer);
+var
+  Buf: packed array[0..1023] of Byte;
+  DataSize: Integer;
+
+begin
+  while Count > 0 do begin
+    DataSize:= Count;
+    if DataSize > SizeOf(Buf) then DataSize:= SizeOf(Buf);
+    Source.ReadBuffer(Buf, DataSize);
+    Target.WriteBuffer(Buf, DataSize);
+    Dec(Count, DataSize);
+  end;
+end;
+
+{
+procedure TksComStreamLogger.Lock;
+var
+  I: Integer;
+
+begin
+  for I:= 0 to 2 do
+    EnterCriticalSection(FLock[I]);
+end;
+
+procedure TksComStreamLogger.UnLock;
+var
+  I: Integer;
+
+begin
+  for I:= 2 downto 0 do
+    LeaveCriticalSection(FLock[I]);
+end;
+}
+
+procedure TksComStreamLogger.LogData(AFlags: LongWord; const Buf; BufSize: Integer);
+var
+  ItemBuf: packed array[0..SizeOf(TLogItem) + 512 - 1] of Byte;
+  Stream: TStream;
+  Index: Integer;
+  P: PLogItem;
+
+begin
+  if BufSize <= 512 then P:= @ItemBuf
+  else GetMem(P, SizeOf(TLogItem) + BufSize);
+  try
+    P^.Size:= SizeOf(TLogItem) + BufSize;
+    P^.Flags:= AFlags;
+    P^.Occured:= Now;
+    Move(Buf, P^.Data, BufSize);
+    Index:= AFlags and $3;
+    Stream:= FStream[Index];
+    if Assigned(Stream) and FActive then begin
+      if Index > 0 then
+        EnterCriticalSection(FLock[Index-1]);
+      try
+        Stream.WriteBuffer(P^, SizeOf(TLogItem) + BufSize);
+        Inc(FItemCount[Index]);
+      finally
+        if Index > 0 then
+          LeaveCriticalSection(FLock[Index-1]);
+      end;
+    end;
+  finally
+    if BufSize > 512 then
+      FreeMem(P, SizeOf(TLogItem) + BufSize);
+  end;
+end;
+
+procedure TksComStreamLogger.SaveToStream(Target: TStream);
+var
+  Header: TLogHeader;
+  Count: Integer;
+  SavePos: Integer;
+  I: Integer;
+
+begin
+  Header.StartTime:= FStartTime;
+  Header.StopTime:= FStopTime;
+  Header.SizeOfChar:= SizeOf(Char);
+  Header.CommentLen:= Length(FComment);
+  Target.WriteBuffer(Header, SizeOf(Header));
+  if Header.CommentLen > 0 then Target.Write(PChar(FComment)^,
+    Header.CommentLen * SizeOf(Char));
+
+// Copy user items (main stream)
+  if FItemCount[0] > 0 then begin
+    SavePos:= FStream[0].Seek(0, soFromCurrent);
+    Count:= FStream[0].Seek(0, soFromEnd);
+    FStream[0].Seek(0, soFromBeginning);
+    Target.CopyFrom(FStream[0], Count);
+    FStream[0].Seek(SavePos, soFromBeginning);
+  end;
+
+  for I:= 0 to 3 do begin
+    if FItemCount[I] > 0 then begin
+      if I > 0 then
+        EnterCriticalSection(FLock[I-1]);
+      try
+        SavePos:= FStream[I].Seek(0, soFromCurrent);
+        Count:= FStream[I].Seek(0, soFromEnd);
+        FStream[I].Seek(0, soFromBeginning);
+        Target.CopyFrom(FStream[I], Count);
+        FStream[I].Seek(SavePos, soFromBeginning);
+
+      finally
+        if I > 0 then
+          LeaveCriticalSection(FLock[I-1]);
+      end;
+    end;
+  end;
+
+end;
+
+{
+procedure TksComStreamLogger.SaveToStream(Target: TStream; const Comment: string);
+var
+  Header: TLogHeader;
+  DataSize: Integer;
+  ItemCount: Integer;
+  SavePos: Integer;
+  Index: array[0..3] of Integer;
+  I: Integer;
+  Completed: Boolean;
+  Items: array[0..3] of TLogItem;
+  MinIndex: Integer;
+
+begin
+  Header.StartTime:= FStartTime;
+  Header.StopTime:= FStopTime;
+  Header.SizeOfChar:= SizeOf(Char);
+  Header.CommentLen:= Length(Comment);
+  Target.WriteBuffer(Header, SizeOf(Header));
+  if Header.CommentLen > 0 then Target.Write(PChar(Comment)^,
+    Header.CommentLen * SizeOf(Char));
+  Lock;
+  try
+    ItemCount:= 0;
+    for I:= 0 to 3 do
+      ItemCount:= ItemCount + FItemCount[I];
+
+    SavePos:= Target.Position;
+    Target.WriteBuffer(ItemCount, SizeOf(ItemCount));
+
+    for I:= 0 to 3 do begin
+      Index[I]:= 0;
+      if FItemCount[I] > 0 then begin
+        LogStream(I).Position:= 0;
+        LogStream(I).ReadBuffer(Items[I], SizeOf(TLogItem));
+      end;
+    end;
+
+    repeat
+      Completed:= True;
+      for I:= 0 to 3 do begin
+        if Index[I] < FItemCount[I] then begin
+          if Completed then begin
+            MinIndex:= I;
+            Completed:= False;
+          end
+          else begin
+            if Items[I].Occured < Items[MinIndex].Occured then
+              MinIndex:= I;
+          end;
+        end;
+      end;
+      if not Completed then begin
+        Target.WriteBuffer(Items[MinIndex], SizeOf(TLogItem));
+        CopyData(LogStream(MinIndex), Target,
+                   Items[MinIndex].Size - SizeOf(TLogItem));
+        Inc(Index[MinIndex], 1);
+        if Index[MinIndex] < FItemCount[MinIndex] then
+          LogStream(MinIndex).ReadBuffer(Items[MinIndex], SizeOf(TLogItem));
+      end;
+    until Completed;
+
+  finally
+    UnLock;
+  end;
+end;
+}
+
+procedure TksComStreamLogger.SaveToFile(const AFileName: string);
+var
+  Stream: TStream;
+
+begin
+  Stream:= TFileStream.Create(AFileName, fmCreate);
+  try
+    SaveToStream(Stream);
+  finally
+    Stream.Free;
+  end;
+end;
+
+{ TksComMemoryLogger }
+
+function TksComMemoryLogger.CreateStream(Index: Integer): TStream;
+begin
+  Result:= TMemoryStream.Create;
 end;
 
 end.

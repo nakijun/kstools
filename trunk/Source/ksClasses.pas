@@ -1,6 +1,6 @@
 { *********************************************************** }
 { *                    ksTools Library                      * }
-{ *       Copyright (c) Sergey Kasandrov 1997, 2009         * }
+{ *       Copyright (c) Sergey Kasandrov 1997, 2010         * }
 { *       -----------------------------------------         * }
 { *         http://sergworks.wordpress.com/kstools          * }
 { *********************************************************** }
@@ -25,7 +25,9 @@ type
   public
     constructor Create(ASize: Integer);
     destructor Destroy; override;
+    function Get(var Buf; Count: Integer): Integer;
     function Read(var Buf; Count: Integer): Integer;
+//    function ReadStop(var Buf; Count: Integer; OnStop: TksReadStopEvent): Integer;
     function Write(const Buf; Count: Integer): Integer;
     procedure Clear;
     function Length: Integer;
@@ -64,6 +66,40 @@ begin
   EnterCriticalSection(FLock);
   Result:= FLength;
   LeaveCriticalSection(FLock);
+end;
+
+function TksRingBuffer.Get(var Buf; Count: Integer): Integer;
+var
+  P1, P2: PByte;
+  N: Integer;
+
+begin
+  EnterCriticalSection(FLock);
+  try
+    if Count > FLength then Count:= FLength;
+    if Count > 0 then begin
+{$IFDEF OldVersion}
+      P1:= @PChar(FBuffer)[FOrigin];
+{$ELSE}
+      P1:= @FBuffer[FOrigin];
+{$ENDIF}
+      P2:= @Buf;
+      if FOrigin + Count <= FSize then begin
+        Move(P1^, P2^, Count);
+      end
+      else begin
+        N:= FSize - FOrigin;
+        Move(P1^, P2^, N);
+        Inc(P2, N);
+        P1:= FBuffer;
+        N:= Count - N;
+        Move(P1^, P2^, N);
+      end;
+    end;
+    Result:= Count;
+  finally
+    LeaveCriticalSection(FLock);
+  end;
 end;
 
 function TksRingBuffer.Read(var Buf; Count: Integer): Integer;

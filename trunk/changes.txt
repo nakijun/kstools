@@ -1,5 +1,12 @@
-current version
+version 0.40
 ---------------
++ added SinFFT procedure (Sine Fourier Transform);
++ added Cos1FFT procedure (Cosine Transform, 1st Form);
++ added Cos2FFT procedure (Cosine Transform, 2nd Form);
++ added ksMath.TksComplex type (complex numbers) 
++ added CmplTests unit test project for TksComplex;
+! fixed TksComPort.OnReadStop issue;
++/- TksComPort StopPos property is replaced by ReadStopped.
 
 version 0.30
 ---------------
@@ -18,14 +25,14 @@ version 0.20
 + added Handle property;
 + added ClearRBuf and ClearWBuf methods;
 + fixed SetBaudrate error;
-  Active method is renamed Connected;
-  Enumeration types are replaced by class constants.
+! Active method is renamed Connected;
+! Enumeration types are replaced by class constants.
 
-verion 0.10
+version 0.10
 -----------
 + added Delphi 2007 support.
 
-initial checkin
+version 0.00
 ---------------
 TksComPort component for Delphi 2009;
 Terminal app to test TksComPort.
