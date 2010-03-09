@@ -35,6 +35,7 @@ requires
 contains
   ksComm in '..\..\Source\ksComm.pas',
   ksClasses in '..\..\Source\ksClasses.pas',
-  ksMath in '..\..\Source\ksMath.pas';
+  ksMath in '..\..\Source\ksMath.pas',
+  arrProcs in '..\..\Source\arrProcs.pas';
 
 end.

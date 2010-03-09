@@ -1,3 +1,8 @@
+version 0.45
+---------------
++ added ksMath.TksInteger type (multiple precision integers);
++ added IntTests unit test project for TksInteger. 
+
 version 0.40
 ---------------
 + added SinFFT procedure (Sine Fourier Transform);
