@@ -41,6 +41,50 @@ type
     class function Tan(const AValue: TksComplex): TksComplex; static;
   end;
 
+  PksInteger = ^TksInteger;
+  TksInteger = packed record
+  private
+    FData: array of LongWord;
+    function GetData(Index: Integer): LongWord;
+//    procedure SetData(Index: Integer; Value: LongWord);
+    procedure Normalize;
+    procedure SetCapacity(Value: Integer);
+    procedure Grow;
+  public
+    procedure AssignData(const Value: array of LongWord; Sign: Integer = 0);
+    function RefCount: LongWord;
+    function Capacity: LongWord;
+    function IsZero: Boolean;
+    function AsString: string;
+    function FromString(const S: string): Boolean;
+    procedure Assign(const Value: TksInteger);
+
+// the Self- prefixed routines may lead to side-effect
+//   if FData array is not unique (shared between several TksIntegers)
+    procedure SelfAdd(const Value: TksInteger);
+    procedure SelfAddCardinal(Value: LongWord);
+
+    procedure SelfSub(const Value: TksInteger);
+    procedure SelfSubCardinal(Value: LongWord);
+
+    procedure SelfMulCardinal(Value: LongWord);
+    function SelfDivModCardinal(Limb: LongWord): LongWord;
+    procedure SelfDivMod(const B: TksInteger; var Q, R: TksInteger);
+
+    property Data[Index: Integer]: LongWord read GetData;// write SetData;
+
+    class operator Implicit(const A: LongWord): TksInteger;
+    class operator Implicit(const A: LongInt): TksInteger;
+
+    class operator Add(const A, B: TksInteger): TksInteger;
+    class operator Subtract(const A, B: TksInteger): TksInteger;
+    class operator Multiply(const A, B: TksInteger): TksInteger;
+    class operator IntDivide(const A, B: TksInteger): TksInteger;
+    class operator Modulus(const A, B: TksInteger): TksInteger;
+
+//    class operator Add(const A: TksInteger; B: LongWord): TksInteger;
+  end;
+
 procedure ComplexFFT(Data: Pointer; DataSize: Integer; Sign: Integer = 0);
 procedure RealFFT(Data: Pointer; DataSize: Integer; Sign: Integer = 0);
 procedure RealFFT2(Data1, Data2: Pointer; fft1, fft2: Pointer; DataSize: Integer);
@@ -55,6 +99,8 @@ function RFTAmplitude(Data: Pointer; DataSize, Index: Integer): Extended;
 function RFTPhase(Data: Pointer; DataSize, Index: Integer): Extended;
 
 implementation
+
+uses arrProcs;
 
 class operator TksComplex.Implicit(const A: Extended): TksComplex;
 begin
@@ -209,6 +255,817 @@ begin
   Result.Re:= System.Sin(2.0 * AValue.Re) / A;
   Result.Im:= (Exp1 - Exp2) * 0.5 / A;
 end;
+
+{ TksInteger }
+
+function TksInteger.GetData(Index: Integer): LongWord;
+var
+  Used: LongInt;
+
+begin
+  Used:= Abs(LongInt(FData[0]));
+  if (Index <= Used) then Result:= FData[Index]
+  else Result:= 0;
+end;
+
+{
+procedure TksInteger.SetData(Index: Integer; Value: LongWord);
+var
+  Used, NewUsed: LongInt;
+
+begin
+  Used:= Abs(LongInt(FData[0]));
+  if Index = 0 then begin
+    NewUsed:= Abs(LongInt(Value));
+    if (NewUsed > Used) then SetLength(FData, NewUsed + 1)
+    else FData:= Copy(FData);
+    FData[0]:= Value;
+  end
+  else if (Index <= Used) then begin
+    FData:= Copy(FData);
+    FData[Index]:= Value;
+  end;
+end;
+}
+
+// TksInteger uses 256-bit (8 longwords) allocation granularity
+//   add 1 limb space for Used field and align the total allocation value
+procedure TksInteger.SetCapacity(Value: Integer);
+begin
+  if Length(FData) < Value + 1 then
+    SetLength(FData, (Value + 1 + 7) and not 7);
+end;
+
+procedure TksInteger.Grow;
+begin
+  SetLength(FData, (Length(FData) + 8) and not 7);
+end;
+
+procedure TksInteger.Normalize;
+var
+  Used: LongInt;
+
+begin
+  Used:= Abs(LongInt(FData[0]));
+  while (Used > 0) and (FData[Used] = 0) do
+    Dec(Used);
+  if Used = 0 then FData[0]:= 1
+  else if (LongInt(FData[0]) >= 0)
+    then FData[0]:= LongWord(Used)
+    else FData[0]:= LongWord(-Used);
+end;
+
+// Unit test support
+function TksInteger.RefCount: LongWord;
+var
+  P: PLongWord;
+
+begin
+  P:= Pointer(FData);
+  Dec(P, 2);
+  Result:= P^;
+end;
+
+function TksInteger.Capacity: LongWord;
+//var
+//  P: PLongWord;
+
+begin
+  Result:= Length(FData) - 1;
+//  P:= Pointer(FData);
+//  Dec(P, 1);
+//  Result:= P^ - 1;
+end;
+
+procedure TksInteger.AssignData(const Value: array of LongWord;  Sign: Integer);
+var
+  N: Integer;
+
+begin
+  N:= Length(Value);
+  if N = 0 then begin
+    SetCapacity(1);
+    FData[0]:= 1;
+    FData[1]:= 0;
+    Exit;
+  end;
+  SetCapacity(N);
+  if (Sign < 0) then FData[0]:= -N
+  else FData[0]:= N;
+  Move(Value[0], FData[1], N * SizeOf(LongWord));
+// normalization is required since the senior Value limbs can be zero
+  Normalize;
+end;
+
+procedure TksInteger.Assign(const Value: TksInteger);
+var
+  L: Integer;
+
+begin
+  if not Assigned(Value.FData) then FData:= nil
+  else begin
+    L:= Abs(LongInt(Value.FData[0]));
+    SetCapacity(L);
+    Move(Value.FData[0], FData[0], (L + 1) * SizeOf(LongWord));
+  end;
+end;
+
+function TksInteger.IsZero: Boolean;
+begin
+//  Result:= (not Assigned(FData)) or ((FData[0] = 1) and (FData[1] = 0));
+  Result:= (FData[0] = 1) and (FData[1] = 0);
+end;
+
+{ TksInteger <--> string conversions }
+function TksInteger.AsString: string;
+var
+  Tmp: TksInteger;
+  Used: LongInt;
+  I, J: Integer;
+  Digits: array of Byte;
+  IsMinus: Boolean;
+
+begin
+  Result:= '';
+  if (FData = nil) then Exit;
+  if IsZero then begin
+    Result:= '0';
+    Exit;
+  end;
+
+  Used:= LongInt(FData[0]);
+  IsMinus:= (Used < 0);
+  Used:= Abs(Used);
+
+// 10 decimal digits per 1 limb is sufficient
+  SetLength(Digits, Used * 10);
+
+  Tmp.Assign(Self);
+  I:= 0;
+  while not Tmp.IsZero do begin
+    Digits[I]:= Tmp.SelfDivModCardinal(10);
+    Inc(I);
+  end;
+
+  if IsMinus then begin
+//    Inc(I);
+    SetLength(Result, I + 1);
+    Result[1]:= '-';
+  end
+  else begin
+    SetLength(Result, I);
+  end;
+
+  for J:= 1 to I do begin
+    Result[J + Ord(IsMinus)]:= Chr(Ord('0') + Digits[I - J]);
+  end;
+
+end;
+
+function TksInteger.FromString(const S: string): Boolean;
+var
+  Minus: Boolean;
+  I, L, N: Integer;
+  Limb: LongWord;
+  Digit: LongWord;
+  Ch: Char;
+
+begin
+  L:= Length(S);
+  if L = 0 then begin
+    SetLength(FData, 2);
+    FData[0]:= 1;
+    FData[1]:= 0;
+    Result:= True;
+    Exit;
+  end;
+  I:= 1;
+  Minus:= S[1] = '-';
+  if Minus then Inc(I);
+  if L < I then begin
+    SetLength(FData, 2);
+    FData[0]:= 1;
+    FData[1]:= 0;
+    Result:= False;
+    Exit;
+  end;
+  if S[I] = '$' then begin
+    Inc(I);
+    if L < I then begin
+      SetLength(FData, 2);
+      FData[0]:= 1;
+      FData[1]:= 0;
+      Result:= False;
+      Exit;
+    end;
+    N:= L - I + 1;           // number of hex digits
+    SetLength(FData, (N + 7) shr 3 + 1);
+    N:= 0;
+    Limb:= 0;
+    repeat
+      Ch:= S[L - N];
+      case Ch of
+        '0'..'9': Digit:= Ord(Ch) - Ord('0');
+        'A'..'F': Digit:= 10 + Ord(Ch) - Ord('A');
+        'a'..'f': Digit:= 10 + Ord(Ch) - Ord('a');
+      else
+        FData[0]:= 1;
+        FData[1]:= 0;
+        Result:= False;
+        Exit;
+      end;
+      Limb:= Limb + (Digit shl ((N and 7) shl 2));
+      Inc(N);
+      if N and 7 = 0 then begin
+        FData[N shr 3]:= Limb;
+        Limb:= 0;
+      end;
+    until I + N > L;
+    if N and 7 <> 0 then
+      FData[(N shr 3) + 1] := Limb;
+
+    N:= (N + 7) shr 3;
+    if Minus then
+      FData[0]:= LongWord(-N)
+    else
+      FData[0]:= LongWord(N);
+    Normalize;
+  end
+  else begin
+               // number of decimal digits
+    N:= L - I + 1;
+
+// верхняя оценка числа 32-битных двойных слов для размещения N десятичных цифр
+//   на основе того что 9 десятичных цифр заведомо умещаются в двойном слове
+    SetCapacity((N + 8) div 9);
+
+    FData[0]:= 1;
+    FData[1]:= 0;
+    repeat
+      Ch:= S[I];
+      case Ch of
+        '0'..'9': Digit:= Ord(Ch) - Ord('0');
+      else
+        FData[0]:= 1;
+        FData[1]:= 0;
+        Result:= False;
+        Exit;
+      end;
+      Inc(I);
+      SelfMulCardinal(10);
+      SelfAddCardinal(Digit);
+    until I > L;
+    if Minus and ((FData[0] > 1) or (FData[1] <> 0)) then
+      FData[0]:= LongWord(-LongInt(FData[0]));
+  end;
+  Result:= True;
+end;
+
+procedure TksInteger.SelfAdd(const Value: TksInteger);
+var
+  UsedA, UsedB: LongInt;
+//  Tmp: array of LongWord;
+
+begin
+  if (Value.FData[0] = 1) and (Value.FData[1] = 0) then Exit;
+
+  if (FData[0] = 1) and (FData[1] = 0) then begin
+    Assign(Value);
+    Exit;
+  end;
+
+  UsedA:= Abs(LongInt(FData[0]));
+  UsedB:= Abs(LongInt(Value.FData[0]));
+
+  if LongInt(FData[0]) xor LongInt(Value.FData[0]) >= 0 then begin
+// operands have the same sign - add arrays
+
+    if UsedA < UsedB then begin
+      SetCapacity(UsedB + 1);   // allocate 1 limb more
+                              //   the additional limb is not zeroed
+      FillChar(FData[UsedA + 1], (UsedB - UsedA) * SizeOf(LongWord), 0);
+      UsedA:= UsedB;
+    end
+    else if UsedA = Length(FData) then Grow;
+
+    if arrSelfAdd(@FData[1], @Value.FData[1], UsedA, UsedB) then begin
+      Inc(UsedA);
+    end;
+    if LongInt(FData[0]) < 0 then UsedA:= -UsedA;
+    FData[0]:= LongWord(UsedA);
+  end
+  else begin
+// operands have opposite signs - SUB lesser from greater
+    if (UsedA > UsedB) or ((UsedA = UsedB)
+        and (arrCmp(@FData[1], @Value.FData[1], UsedA) >= 0)) then begin
+      arrSelfSub(@FData[1], @Value.FData[1], UsedA, UsedB);
+      Normalize;
+    end
+    else begin
+//      SetLength(Tmp, UsedA);
+//      Move(FData[1], Tmp[0], UsedA * SizeOf(LongWord));
+      SetCapacity(UsedB);
+//      arrSub(@Value.FData[1], @Tmp[0], @FData[1], UsedB, UsedA);
+      arrSub(@Value.FData[1], @FData[1], @FData[1], UsedB, UsedA);
+      FData[0]:= Value.FData[0];
+      Normalize;
+    end;
+  end;
+end;
+
+procedure TksInteger.SelfSub(const Value: TksInteger);
+var
+  UsedA, UsedB: LongInt;
+//  Tmp: array of LongWord;
+
+begin
+  if (Value.FData[0] = 1) and (Value.FData[1] = 0) then Exit;
+
+  if (FData[0] = 1) and (FData[1] = 0) then begin
+    Assign(Value);
+    FData[0]:= LongWord(-LongInt(FData[0]));
+    Exit;
+  end;
+
+  UsedA:= Abs(LongInt(FData[0]));
+  UsedB:= Abs(LongInt(Value.FData[0]));
+
+  if LongInt(FData[0]) xor LongInt(Value.FData[0]) < 0 then begin
+// operands have opposite sign - add arrays
+
+    if UsedA < UsedB then begin
+      SetCapacity(UsedB + 1);   // allocate 1 limb more
+                              //   the additional limb is not zeroed
+      FillChar(FData[UsedA + 1], (UsedB - UsedA) * SizeOf(LongWord), 0);
+      UsedA:= UsedB;
+    end
+    else if UsedA = Length(FData) then Grow;
+
+    if arrSelfAdd(@FData[1], @Value.FData[1], UsedA, UsedB) then begin
+      Inc(UsedA);
+    end;
+    if LongInt(FData[0]) < 0 then UsedA:= -UsedA;
+    FData[0]:= LongWord(UsedA);
+  end
+  else begin
+// operands have same signs - SUB lesser from greater
+    if (UsedA > UsedB) or ((UsedA = UsedB)
+        and (arrCmp(@FData[1], @Value.FData[1], UsedA) >= 0)) then begin
+      arrSelfSub(@FData[1], @Value.FData[1], UsedA, UsedB);
+      Normalize;
+    end
+    else begin
+//      SetLength(Tmp, UsedA);
+//      Move(FData[1], Tmp[0], UsedA * SizeOf(LongWord));
+      SetCapacity(UsedB);
+//      arrSub(@Value.FData[1], @Tmp[0], @FData[1], UsedB, UsedA);
+      arrSub(@Value.FData[1], @FData[1], @FData[1], UsedB, UsedA);
+      FData[0]:= LongWord(-LongInt(Value.FData[0]));
+      Normalize;
+    end;
+  end;
+end;
+
+procedure TksInteger.SelfAddCardinal(Value: LongWord);
+var
+  Used: LongInt;
+  Minus: Boolean;
+
+begin
+  Used:= LongInt(FData[0]);
+  Minus:= Used < 0;
+  Used:= Abs(Used);
+  if not Minus then begin
+    if Used = Length(FData) then Grow;
+    if arrSelfAddLimb(@FData[1], Value, Used) then begin
+      FData[0]:= LongWord(Used + 1);
+    end;
+  end
+  else if (Used > 1) then begin
+    arrSelfSubLimb(@FData[1], Value, Used);
+    if FData[Used] = 0 then begin
+      FData[0]:= LongWord(-Used + 1);
+    end;
+  end
+  else begin
+    if FData[1] > Value then begin
+      Dec(FData[1], Value);
+    end
+    else begin
+      FData[1]:= Value - FData[1];
+      FData[0]:= LongWord(1);
+    end;
+  end;
+end;
+
+procedure TksInteger.SelfSubCardinal(Value: LongWord);
+var
+  Used: LongInt;
+  Minus: Boolean;
+
+begin
+  Used:= LongInt(FData[0]);
+  Minus:= Used < 0;
+  Used:= Abs(Used);
+  if Minus then begin
+    if Used = Length(FData) then Grow;
+    if arrSelfAddLimb(@FData[1], Value, Used) then begin
+      FData[0]:= LongWord(-(Used + 1));
+    end;
+  end
+  else if (Used > 1) then begin
+    arrSelfSubLimb(@FData[1], Value, Used);
+    if FData[Used] = 0 then begin
+      FData[0]:= LongWord(Used - 1);
+    end;
+  end
+  else begin
+    if FData[1] >= Value then begin
+      Dec(FData[1], Value);
+    end
+    else begin
+      FData[1]:= Value - FData[1];
+      FData[0]:= LongWord(-1);
+    end;
+  end;
+end;
+
+procedure TksInteger.SelfMulCardinal(Value: LongWord);
+var
+  Used: LongInt;
+
+begin
+  Used:= Abs(LongInt(FData[0]));
+  if Used = Length(FData) then Grow;
+  if arrSelfMulLimb(@FData[1], Value, Used) then begin
+    Inc(Used);
+    if LongInt(FData[0]) < 0 then Used:= -Used;
+    FData[0]:= LongWord(Used);
+  end;
+end;
+
+function SeniorBit(Value: LongWord): Integer;
+asm
+        OR    EAX,EAX
+        JZ    @@Done
+        BSR   EAX,EAX
+        INC   EAX
+@@Done:
+end;
+
+procedure TksInteger.SelfDivMod(const B: TksInteger; var Q, R: TksInteger);
+var
+  Cond: Boolean;
+  Diff: Integer;
+  Dividend, Divisor: TksInteger;
+  Limb: LongWord;
+  UsedA, UsedB, UsedD, UsedQ: LongInt;
+  Shift: Integer;
+
+begin
+  if B.IsZero then
+    raise EZeroDivide.Create('Zero Divide');
+
+  Cond:= IsZero;
+
+  if not Cond then begin
+    UsedA:= Abs(LongInt(FData[0]));
+    UsedB:= Abs(LongInt(B.FData[0]));
+    Cond:= (UsedA < UsedB);
+    if not Cond and (UsedA = UsedB) then begin
+      Diff:= arrCmp(@FData[1], @B.FData[1], UsedB);
+      if Diff = 0 then begin
+        Q:= LongWord(1);
+        R:= LongWord(0);
+        Exit;
+      end
+      else if Diff < 0 then Cond:= True;
+    end;
+  end;
+
+  if Cond then begin
+    Q:= LongWord(0);
+    R.Assign(Self);
+    Exit;
+  end;
+
+  SetLength(Q.FData, UsedA - UsedB + 2);
+  SetLength(R.FData, UsedB + 1);
+  if (UsedB = 1) then begin
+    if (UsedA = 1) then begin
+      Q.FData[1]:= FData[1] div B.FData[1];
+      R.FData[1]:= FData[1] mod B.FData[1];
+    end
+    else begin
+      R.FData[1]:= arrDivModLimb(@FData[1], @Q.FData[1], UsedA, B.FData[1]);
+      if Q.FData[UsedA] = 0 then Dec(UsedA);
+    end;
+
+    if (LongInt(FData[0]) xor LongInt(B.FData[0]) >= 0)
+//   or ((UsedA = 1) and (Q.FData[1] = 0))  never happens since dividend > divisor
+        then
+          Q.FData[0]:= LongWord(UsedA)
+        else
+          Q.FData[0]:= LongWord(-UsedA);
+
+    if (LongInt(FData[0]) >= 0) or (R.FData[1] = 0)
+      then
+        R.FData[0]:= 1
+      else
+        R.FData[0]:= LongWord(-1);
+
+    Exit;
+  end;
+
+// calc the number of bits to shift
+  Limb:= B.FData[UsedB];
+  Shift:= 32 - SeniorBit(Limb);
+  SetLength(Divisor.FData, UsedB + 1);
+  Divisor.FData[0]:= UsedB;
+  arrShlShort(@B.FData[1], @Divisor.FData[1], UsedB, Shift);
+
+  SetLength(Dividend.FData, UsedA + 2);
+  UsedD:= arrShlShort(@FData[1], @Dividend.FData[1], UsedA, Shift);
+
+  if UsedD = UsedA then
+    Dividend.FData[UsedA + 1]:= 0;
+  Dividend.FData[0]:= UsedA + 1;    // ??
+
+  UsedQ:= UsedA - UsedB + 1;
+  SetLength(Q.FData, UsedQ + 1);
+
+  arrNormDivMod(@Dividend.FData[1], @Divisor.FData[1], @Q.FData[1],
+                UsedA + 1, UsedB);
+  arrShrShort(@Dividend.FData[1], @R.FData[1], UsedB, Shift);
+
+  if LongInt(FData[0]) xor LongInt(B.FData[0]) >= 0
+    then
+      Q.FData[0]:= LongWord(UsedQ)
+    else
+      Q.FData[0]:= LongWord(-UsedQ);
+
+  if (LongInt(FData[0]) >= 0)
+    then
+      R.FData[0]:= LongWord(UsedB)
+    else
+      R.FData[0]:= LongWord(-UsedB);
+
+  Q.Normalize;
+  R.Normalize;
+end;
+
+function TksInteger.SelfDivModCardinal(Limb: LongWord): LongWord;
+var
+  L: LongInt;
+//  R: LongWord;
+
+begin
+  L:= Abs(LongInt(FData[0]));
+  Result:= arrSelfDivModLimb(@FData[1], L, Limb);
+  if (FData[L] = 0) then begin
+    if (L > 1) then begin
+      Dec(L);
+      if LongInt(FData[0]) < 0 then L:= -L;
+    end;
+    FData[0]:= LongWord(L);
+  end;
+end;
+
+{
+class operator TksInteger.Add(const A: TksInteger; B: LongWord): TksInteger;
+var
+  UsedA: LongInt;
+
+begin
+  if B = 0 then begin
+    Result.Assign(A);
+    Exit;
+  end;
+
+  if A.IsZero then begin
+    SetLength(Result.FData, 2);
+    Result.FData[0]:= 1;
+    Result.FData[1]:= B;
+    Exit;
+  end;
+
+  UsedA:= Abs(LongInt(A.FData[0]));
+
+  if LongInt(A.FData[0]) >= 0 then begin
+    SetLength(Result.FData, UsedA + 2);
+    if arrAddLimb(@A.FData[1], B, @Result.FData[1], UsedA)
+      then
+        Inc(UsedA);
+    Result.FData[0]:= UsedA;
+  end
+  else begin
+    SetLength(Result.FData, UsedA + 1);
+    if arrSubLimb(@A.FData[1], B, @Result.FData[1], UsedA)
+      or ((UsedA = 1) and (Result.FData[1] = 0))
+        then
+          Result.FData[0]:= 1
+        else begin
+          if Result.FData[UsedA] = 0 then Dec(UsedA);
+          Result.FData[0]:= LongWord(-UsedA);
+        end;
+  end;
+end;
+}
+class operator TksInteger.Add(const A, B: TksInteger): TksInteger;
+var
+  UsedA, UsedB: LongInt;
+
+begin
+  if B.IsZero then begin
+    Result.Assign(A);
+    Exit;
+  end;
+
+  if A.IsZero then begin
+    Result.Assign(B);
+    Exit;
+  end;
+
+  UsedA:= Abs(LongInt(A.FData[0]));
+  UsedB:= Abs(LongInt(B.FData[0]));
+
+  if LongInt(A.FData[0]) xor LongInt(B.FData[0]) >= 0 then begin
+// Values have the same sign - ADD lesser to greater
+
+    if UsedA >= UsedB then begin
+      SetLength(Result.FData, UsedA + 2);
+      if arrAdd(@A.FData[1], @B.FData[1], @Result.FData[1], UsedA, UsedB) then begin
+        if LongInt(A.FData[0]) >= 0 then Result.FData[0]:= LongWord(UsedA + 1)
+        else Result.FData[0]:= LongWord(-(UsedA + 1));
+//        Result.Data[UsedA + 1]:= 1;
+      end
+      else begin
+        Result.FData[0]:= A.FData[0];
+      end
+    end
+    else begin
+      SetLength(Result.FData, UsedB + 2);
+      if arrAdd(@B.FData[1], @A.FData[1], @Result.FData[1], UsedB, UsedA) then begin
+        if LongInt(B.FData[0]) >= 0 then Result.FData[0]:= LongWord(UsedB + 1)
+        else Result.FData[0]:= LongWord(-(UsedB + 1));
+//        Result.FData[UsedB + 1]:= 1;
+      end
+      else begin
+        Result.FData[0]:= B.FData[0];
+      end
+    end
+  end
+  else begin
+// Values have opposite signs - SUB lesser from greater
+    if (UsedA > UsedB) or ((UsedA = UsedB)
+        and (arrCmp(@A.FData[1], @B.FData[1], UsedA) >= 0)) then begin
+      SetLength(Result.FData, UsedA + 1);
+      Result.FData[0]:= A.FData[0];
+      arrSub(@A.FData[1], @B.FData[1], @Result.FData[1], UsedA, UsedB);
+      Result.Normalize;
+    end
+    else begin
+      SetLength(Result.FData, UsedB + 1);
+      Result.FData[0]:= B.FData[0];
+      arrSub(@B.FData[1], @A.FData[1], @Result.FData[1], UsedB, UsedA);
+      Result.Normalize;
+    end;
+  end;
+end;
+
+class operator TksInteger.Subtract(const A, B: TksInteger): TksInteger;
+var
+  UsedA, UsedB: LongInt;
+
+begin
+  if B.IsZero then begin
+    Result.Assign(A);
+    Exit;
+  end;
+
+  if A.IsZero then begin
+    Result.Assign(B);
+    if (Result.FData[0] > 1) or (Result.FData[1] <> 0) then begin
+      Result.FData[0]:= LongWord(-LongInt(Result.FData[0]));
+    end;
+    Exit;
+  end;
+
+  UsedA:= Abs(LongInt(A.FData[0]));
+  UsedB:= Abs(LongInt(B.FData[0]));
+
+// check for undefined values - just return undefined value
+//  if (UsedA = 0) then Exit(A);          // A undefined
+//  if (UsedB = 0) then Exit(B);          // B undefined
+
+  if LongInt(A.FData[0]) xor LongInt(B.FData[0]) >= 0 then begin
+// Values have the same sign - SUB lesser from greater
+    if (UsedA > UsedB) or ((UsedA = UsedB)
+        and (arrCmp(@A.FData[1], @B.FData[1], UsedA) >= 0)) then begin
+      SetLength(Result.FData, UsedA + 1);
+      Result.FData[0]:= A.FData[0];
+      arrSub(@A.FData[1], @B.FData[1], @Result.FData[1], UsedA, UsedB);
+      Result.Normalize;
+    end
+    else begin
+      SetLength(Result.FData, UsedB + 1);
+      Result.FData[0]:= -B.FData[0];
+      arrSub(@B.FData[1], @A.FData[1], @Result.FData[1], UsedB, UsedA);
+      Result.Normalize;
+    end;
+  end
+  else begin
+// Values have opposite signs - ADD lesser to greater
+    if UsedA >= UsedB then begin
+      SetLength(Result.FData, UsedA + 2);
+      if arrAdd(@A.FData[1], @B.FData[1], @Result.FData[1], UsedA, UsedB) then begin
+        if LongInt(A.FData[0]) >= 0 then Result.FData[0]:= LongWord(UsedA + 1)
+        else Result.FData[0]:= LongWord(-(UsedA + 1));
+      end
+      else begin
+        Result.FData[0]:= A.FData[0];
+      end
+    end
+    else begin
+      SetLength(Result.FData, UsedB + 2);
+      if arrAdd(@B.FData[1], @A.FData[1], @Result.FData[1], UsedB, UsedA) then begin
+        if LongInt(B.FData[0]) <= 0 then Result.FData[0]:= LongWord(UsedB + 1)
+        else Result.FData[0]:= LongWord(-(UsedB + 1));
+      end
+      else begin
+        Result.FData[0]:= -B.FData[0];
+      end
+    end
+  end;
+end;
+
+class operator TksInteger.Multiply(const A, B: TksInteger): TksInteger;
+var
+  UsedA, UsedB, Used: LongInt;
+
+begin
+  if A.IsZero or B.IsZero then begin
+    Result:= LongWord(0);
+    Exit;
+  end;
+
+  UsedA:= Abs(LongInt(A.FData[0]));
+  UsedB:= Abs(LongInt(B.FData[0]));
+
+// check for undefined values - just return undefined value
+//  if (UsedA = 0) then Exit(A);          // A undefined
+//  if (UsedB = 0) then Exit(B);          // B undefined
+
+  Used:= UsedA + UsedB;
+  SetLength(Result.FData, Used + 1);
+  if UsedA >= UsedB then
+    arrMul(@A.FData[1], @B.FData[1], @Result.FData[1], UsedA, UsedB)
+  else
+    arrMul(@B.FData[1], @A.FData[1], @Result.FData[1], UsedB, UsedA);
+
+//  if Result.FData[Used] = 0 then Dec(Used);
+  if LongInt(A.FData[0]) xor LongInt(B.FData[0]) < 0 then Used:= -Used;
+  Result.FData[0]:= LongWord(Used);
+  Result.Normalize;
+end;
+
+class operator TksInteger.IntDivide(const A, B: TksInteger): TksInteger;
+var
+  Remainder: TksInteger;
+
+begin
+  A.SelfDivMod(B, Result, Remainder);
+end;
+
+class operator TksInteger.Modulus(const A, B: TksInteger): TksInteger;
+var
+  Quotient: TksInteger;
+
+begin
+  A.SelfDivMod(B, Quotient, Result);
+end;
+
+class operator TksInteger.Implicit(const A: LongWord): TksInteger;
+begin
+  SetLength(Result.FData, 2);
+  Result.FData[0]:= 1;
+  Result.FData[1]:= A;
+end;
+
+class operator TksInteger.Implicit(const A: LongInt): TksInteger;
+begin
+  SetLength(Result.FData, 2);
+  if A >= 0 then begin
+    Result.FData[0]:= 1;
+    Result.FData[1]:= LongWord(A);
+  end
+  else begin
+    Result.FData[0]:= LongWord(-1);
+    Result.FData[1]:= LongWord(-A);
+  end;
+end;
+
+(* ************************************************************************ *)
 
 type
   PCArray = ^TCArray;
@@ -680,6 +1537,72 @@ begin
     else Result:= 0;
   end
   else Result:= Math.ArcTan2(C.Im, C.Re);
+end;
+
+{=========== Windows for RealFFT ================}
+
+{ Bartlett (triangle) window }
+function RFWBartlett(Data: Pointer; DataSize: Integer): Extended;
+var
+  P: PExtended;
+  Half: Extended;
+  Factor: Extended;
+  Index: Integer;
+
+begin
+  Index:= 0;
+  P:= Data;
+  Half:= DataSize shr 1;
+  Result:= 0;
+  while Index < Half do begin
+    Factor:= Index / Half;
+    P^:= P^ * Factor;
+    Result:= Result + Sqr(Factor);
+    Inc(P);
+    Inc(Index);
+  end;
+  while Index > 0 do begin
+    Factor:= Index / Half;
+    P^:= P^ * Factor;
+    Result:= Result + Sqr(Factor);
+    Inc(P);
+    Dec(Index);
+  end;
+  Result:= Result * DataSize;
+end;
+
+{ Hann (cosine) window }
+function RFWHann(Data: Pointer; DataSize: Integer): Pointer;
+var
+  P: PExtended;
+  Index: Integer;
+
+begin
+  Index:= 0;
+  P:= Data;
+  while Index < DataSize do begin
+    P^:= P^ * (0.50 - 0.50 * Cos(2 * Pi * Index / (DataSize - 1)));
+    Inc(P);
+    Inc(Index);
+  end;
+  Result:= Data;
+end;
+
+{ Hamming (raised cosine) window }
+function RFWHamming(Data: Pointer; DataSize: Integer): Pointer;
+var
+  P: PExtended;
+  Index: Integer;
+
+begin
+  Index:= 0;
+  P:= Data;
+  while Index < DataSize do begin
+    P^:= P^ * (0.54 - 0.46 * Cos(2 * Pi * Index / (DataSize - 1)));
+    Inc(P);
+    Inc(Index);
+  end;
+  Result:= Data;
 end;
 
 end.

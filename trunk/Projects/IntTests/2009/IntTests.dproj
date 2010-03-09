@@ -1,7 +1,7 @@
 ﻿	<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
 		<PropertyGroup>
-			<ProjectGuid>{E3A1A9D7-3651-4706-B9B4-88E487E05816}</ProjectGuid>
-			<MainSource>ksToolsR.dpk</MainSource>
+			<ProjectGuid>{7FDD9E03-D7B2-4CB8-859D-44B9581CC5CF}</ProjectGuid>
+			<MainSource>IntTests.dpr</MainSource>
 			<Config Condition="'$(Config)'==''">Debug</Config>
 			<DCC_DCCCompiler>DCC32</DCC_DCCCompiler>
 			<ProjectVersion>12.0</ProjectVersion>
@@ -20,22 +20,16 @@
 			<Base>true</Base>
 		</PropertyGroup>
 		<PropertyGroup Condition="'$(Base)'!=''">
-			<DCC_DcuOutput>$(BDSCOMMONDIR)\Dcp</DCC_DcuOutput>
+			<DCC_DcuOutput>..\..\..\Bin\</DCC_DcuOutput>
+			<DCC_ExeOutput>..\..\..\Bin\</DCC_ExeOutput>
 			<DCC_ImageBase>00400000</DCC_ImageBase>
-			<DesignOnlyPackage>false</DesignOnlyPackage>
-			<DllSuffix>120</DllSuffix>
-			<DCC_DependencyCheckOutputName>C:\Users\Public\Documents\RAD Studio\6.0\Bpl\ksToolsR120.bpl</DCC_DependencyCheckOutputName>
+			<DCC_E>false</DCC_E>
 			<DCC_Platform>x86</DCC_Platform>
-			<DCC_Description>ksTools Runtime Package</DCC_Description>
-			<RuntimeOnlyPackage>true</RuntimeOnlyPackage>
-			<DCC_SymbolReferenceInfo>0</DCC_SymbolReferenceInfo>
+			<DCC_DependencyCheckOutputName>..\..\..\Bin\IntTests.exe</DCC_DependencyCheckOutputName>
 			<DCC_N>false</DCC_N>
 			<DCC_S>false</DCC_S>
-			<GenDll>true</GenDll>
-			<DCC_K>false</DCC_K>
-			<GenPackage>true</GenPackage>
-			<DCC_E>false</DCC_E>
 			<DCC_F>false</DCC_F>
+			<DCC_K>false</DCC_K>
 		</PropertyGroup>
 		<PropertyGroup Condition="'$(Cfg_1)'!=''">
 			<DCC_LocalDebugSymbols>false</DCC_LocalDebugSymbols>
@@ -47,15 +41,14 @@
 			<DCC_Define>DEBUG;$(DCC_Define)</DCC_Define>
 		</PropertyGroup>
 		<ItemGroup>
-			<DelphiCompile Include="ksToolsR.dpk">
+			<DelphiCompile Include="IntTests.dpr">
 				<MainSource>MainSource</MainSource>
 			</DelphiCompile>
-			<DCCReference Include="rtl.dcp"/>
-			<DCCReference Include="vcl.dcp"/>
-			<DCCReference Include="..\..\Source\ksComm.pas"/>
-			<DCCReference Include="..\..\Source\ksClasses.pas"/>
-			<DCCReference Include="..\..\Source\ksMath.pas"/>
-			<DCCReference Include="..\..\Source\arrProcs.pas"/>
+			<DCCReference Include="..TestInt.pas">
+				<ModuleName>TestInt</ModuleName>
+			</DCCReference>
+			<DCCReference Include="..\..\..\Source\ksMath.pas"/>
+			<DCCReference Include="..\..\..\Source\arrProcs.pas"/>
 			<BuildConfiguration Include="Base">
 				<Key>Base</Key>
 			</BuildConfiguration>
@@ -71,11 +64,11 @@
 		<Import Project="$(BDS)\Bin\CodeGear.Delphi.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Delphi.Targets')"/>
 		<ProjectExtensions>
 			<Borland.Personality>Delphi.Personality.12</Borland.Personality>
-			<Borland.ProjectType>Package</Borland.ProjectType>
+			<Borland.ProjectType>VCLApplication</Borland.ProjectType>
 			<BorlandProject>
 				<Delphi.Personality>
 					<Source>
-						<Source Name="MainSource">ksToolsR.dpk</Source>
+						<Source Name="MainSource">IntTests.dpr</Source>
 					</Source>
 					<Parameters>
 						<Parameters Name="UseLauncher">False</Parameters>
@@ -83,7 +76,7 @@
 						<Parameters Name="LoadUnspecifiedSymbols">False</Parameters>
 					</Parameters>
 					<VersionInfo>
-						<VersionInfo Name="IncludeVerInfo">True</VersionInfo>
+						<VersionInfo Name="IncludeVerInfo">False</VersionInfo>
 						<VersionInfo Name="AutoIncBuild">False</VersionInfo>
 						<VersionInfo Name="MajorVer">1</VersionInfo>
 						<VersionInfo Name="MinorVer">0</VersionInfo>

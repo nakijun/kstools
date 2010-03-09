@@ -37,6 +37,7 @@
     <DelphiCompile Include="ksToolsR.dpk">
       <MainSource>MainSource</MainSource>
     </DelphiCompile>
+    <DCCReference Include="..\..\Source\arrProcs.pas" />
     <DCCReference Include="..\..\Source\ksClasses.pas" />
     <DCCReference Include="..\..\Source\ksComm.pas" />
     <DCCReference Include="..\..\Source\ksMath.pas" />
