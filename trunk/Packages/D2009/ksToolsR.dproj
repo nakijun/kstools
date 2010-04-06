@@ -24,11 +24,11 @@
 			<DCC_ImageBase>00400000</DCC_ImageBase>
 			<DesignOnlyPackage>false</DesignOnlyPackage>
 			<DllSuffix>120</DllSuffix>
-			<DCC_DependencyCheckOutputName>C:\Users\Public\Documents\RAD Studio\6.0\Bpl\ksToolsR120.bpl</DCC_DependencyCheckOutputName>
+			<DCC_DependencyCheckOutputName>C:\Documents and Settings\All Users\Documents\RAD Studio\6.0\Bpl\ksToolsR120.bpl</DCC_DependencyCheckOutputName>
 			<DCC_Platform>x86</DCC_Platform>
 			<DCC_Description>ksTools Runtime Package</DCC_Description>
 			<RuntimeOnlyPackage>true</RuntimeOnlyPackage>
-			<DCC_SymbolReferenceInfo>0</DCC_SymbolReferenceInfo>
+			<DCC_SymbolReferenceInfo>1</DCC_SymbolReferenceInfo>
 			<DCC_N>false</DCC_N>
 			<DCC_S>false</DCC_S>
 			<GenDll>true</GenDll>
@@ -56,6 +56,7 @@
 			<DCCReference Include="..\..\Source\ksClasses.pas"/>
 			<DCCReference Include="..\..\Source\ksMath.pas"/>
 			<DCCReference Include="..\..\Source\arrProcs.pas"/>
+			<DCCReference Include="..\..\Source\ksTimers.pas"/>
 			<BuildConfiguration Include="Base">
 				<Key>Base</Key>
 			</BuildConfiguration>

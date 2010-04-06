@@ -28,7 +28,7 @@
 			<DCC_UnitAlias>WinTypes=Windows;WinProcs=Windows;$(DCC_UnitAlias)</DCC_UnitAlias>
 			<RuntimeOnlyPackage>true</RuntimeOnlyPackage>
 			<DCC_Description>ksTools Runtime Package</DCC_Description>
-			<DCC_SymbolReferenceInfo>0</DCC_SymbolReferenceInfo>
+			<DCC_SymbolReferenceInfo>1</DCC_SymbolReferenceInfo>
 			<DCC_N>false</DCC_N>
 			<DCC_K>false</DCC_K>
 			<GenDll>true</GenDll>
@@ -57,6 +57,7 @@
 			<DCCReference Include="..\..\Source\ksClasses.pas"/>
 			<DCCReference Include="..\..\Source\ksMath.pas"/>
 			<DCCReference Include="..\..\Source\arrProcs.pas"/>
+			<DCCReference Include="..\..\Source\ksTimers.pas"/>
 			<BuildConfiguration Include="Base">
 				<Key>Base</Key>
 			</BuildConfiguration>

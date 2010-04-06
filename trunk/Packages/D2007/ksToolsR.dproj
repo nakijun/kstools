@@ -41,6 +41,7 @@
     <DCCReference Include="..\..\Source\ksClasses.pas" />
     <DCCReference Include="..\..\Source\ksComm.pas" />
     <DCCReference Include="..\..\Source\ksMath.pas" />
+    <DCCReference Include="..\..\Source\ksTimers.pas" />
     <DCCReference Include="..\..\Source\rtl.dcp" />
     <DCCReference Include="..\..\Source\vcl.dcp" />
   </ItemGroup>
