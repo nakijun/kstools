@@ -1,10 +1,10 @@
 ﻿	<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
 		<PropertyGroup>
-			<ProjectGuid>{F1B066DE-9023-49C4-8F8A-A010684C9E60}</ProjectGuid>
-			<MainSource>ksToolsR.dpk</MainSource>
+			<ProjectGuid>{FD45B669-6C30-4628-B300-757083615E68}</ProjectGuid>
+			<ProjectVersion>12.0</ProjectVersion>
 			<Config Condition="'$(Config)'==''">Debug</Config>
 			<DCC_DCCCompiler>DCC32</DCC_DCCCompiler>
-			<ProjectVersion>12.0</ProjectVersion>
+			<MainSource>UtilTests.dpr</MainSource>
 		</PropertyGroup>
 		<PropertyGroup Condition="'$(Config)'=='Base' or '$(Base)'!=''">
 			<Base>true</Base>
@@ -20,23 +20,19 @@
 			<Base>true</Base>
 		</PropertyGroup>
 		<PropertyGroup Condition="'$(Base)'!=''">
+			<DCC_ExeOutput>..\..\..\Bin\</DCC_ExeOutput>
+			<DCC_UnitSearchPath>$(BDS)\Source\DUnit\src;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+			<DCC_DependencyCheckOutputName>..\..\..\Bin\UtilTests.exe</DCC_DependencyCheckOutputName>
 			<DCC_ImageBase>00400000</DCC_ImageBase>
-			<DCC_DependencyCheckOutputName>C:\Documents and Settings\All Users\Documents\RAD Studio\7.0\Bpl\ksToolsR140.bpl</DCC_DependencyCheckOutputName>
-			<DllSuffix>140</DllSuffix>
-			<DesignOnlyPackage>false</DesignOnlyPackage>
+			<DCC_UnitAlias>WinTypes=Windows;WinProcs=Windows;DbiTypes=BDE;DbiProcs=BDE;DbiErrs=BDE;$(DCC_UnitAlias)</DCC_UnitAlias>
 			<DCC_Platform>x86</DCC_Platform>
-			<DCC_UnitAlias>WinTypes=Windows;WinProcs=Windows;$(DCC_UnitAlias)</DCC_UnitAlias>
-			<RuntimeOnlyPackage>true</RuntimeOnlyPackage>
-			<DCC_Description>ksTools Runtime Package</DCC_Description>
-			<DCC_SymbolReferenceInfo>1</DCC_SymbolReferenceInfo>
-			<DCC_N>false</DCC_N>
+			<DCC_Define>_CONSOLE_TESTRUNNER;$(DCC_Define)</DCC_Define>
 			<DCC_K>false</DCC_K>
-			<GenDll>true</GenDll>
+			<DCC_N>false</DCC_N>
 			<DCC_S>false</DCC_S>
-			<DCC_DcuOutput>$(BDSCOMMONDIR)\Dcp</DCC_DcuOutput>
-			<GenPackage>true</GenPackage>
-			<DCC_F>false</DCC_F>
+			<DCC_DcuOutput>..\..\..\Bin\</DCC_DcuOutput>
 			<DCC_E>false</DCC_E>
+			<DCC_F>false</DCC_F>
 		</PropertyGroup>
 		<PropertyGroup Condition="'$(Cfg_1)'!=''">
 			<DCC_LocalDebugSymbols>false</DCC_LocalDebugSymbols>
@@ -48,19 +44,11 @@
 			<DCC_Define>DEBUG;$(DCC_Define)</DCC_Define>
 		</PropertyGroup>
 		<ItemGroup>
-			<DelphiCompile Include="ksToolsR.dpk">
+			<DelphiCompile Include="UtilTests.dpr">
 				<MainSource>MainSource</MainSource>
 			</DelphiCompile>
-			<DCCReference Include="rtl.dcp"/>
-			<DCCReference Include="vcl.dcp"/>
-			<DCCReference Include="..\..\Source\ksComm.pas"/>
-			<DCCReference Include="..\..\Source\ksClasses.pas"/>
-			<DCCReference Include="..\..\Source\ksMath.pas"/>
-			<DCCReference Include="..\..\Source\arrProcs.pas"/>
-			<DCCReference Include="..\..\Source\ksTimers.pas"/>
-			<DCCReference Include="..\..\Source\ksUtils.pas"/>
-			<DCCReference Include="..\..\Source\ksShrink.pas"/>
-			<DCCReference Include="..\..\Source\ksCompress.pas"/>
+			<DCCReference Include="..\TestUtils.pas"/>
+			<DCCReference Include="..\..\..\Source\ksUtils.pas"/>
 			<BuildConfiguration Include="Base">
 				<Key>Base</Key>
 			</BuildConfiguration>
@@ -76,19 +64,16 @@
 		<Import Project="$(BDS)\Bin\CodeGear.Delphi.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Delphi.Targets')"/>
 		<ProjectExtensions>
 			<Borland.Personality>Delphi.Personality.12</Borland.Personality>
-			<Borland.ProjectType>Package</Borland.ProjectType>
+			<Borland.ProjectType/>
 			<BorlandProject>
 				<Delphi.Personality>
-					<Source>
-						<Source Name="MainSource">ksToolsR.dpk</Source>
-					</Source>
 					<Parameters>
 						<Parameters Name="UseLauncher">False</Parameters>
 						<Parameters Name="LoadAllSymbols">True</Parameters>
 						<Parameters Name="LoadUnspecifiedSymbols">False</Parameters>
 					</Parameters>
 					<VersionInfo>
-						<VersionInfo Name="IncludeVerInfo">True</VersionInfo>
+						<VersionInfo Name="IncludeVerInfo">False</VersionInfo>
 						<VersionInfo Name="AutoIncBuild">False</VersionInfo>
 						<VersionInfo Name="MajorVer">1</VersionInfo>
 						<VersionInfo Name="MinorVer">0</VersionInfo>
@@ -114,7 +99,14 @@
 						<VersionInfoKeys Name="ProductVersion">1.0.0.0</VersionInfoKeys>
 						<VersionInfoKeys Name="Comments"/>
 					</VersionInfoKeys>
+					<Source>
+						<Source Name="MainSource">UtilTests.dpr</Source>
+					</Source>
 				</Delphi.Personality>
+				<UnitTesting>
+					<TestFramework>DUnit / Delphi Win32</TestFramework>
+					<TestRunner>GUI</TestRunner>
+				</UnitTesting>
 			</BorlandProject>
 			<ProjectFileVersion>12</ProjectFileVersion>
 		</ProjectExtensions>

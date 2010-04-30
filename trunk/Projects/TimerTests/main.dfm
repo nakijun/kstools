@@ -24,6 +24,20 @@ object Form1: TForm1
     Height = 13
     Caption = 'Timer Interval, ms :'
   end
+  object Label2: TLabel
+    Left = 40
+    Top = 16
+    Width = 96
+    Height = 13
+    Caption = 'TTimer Performance'
+  end
+  object Label3: TLabel
+    Left = 368
+    Top = 16
+    Width = 106
+    Height = 13
+    Caption = 'TksTimer Performance'
+  end
   object btnRun: TButton
     Left = 392
     Top = 571

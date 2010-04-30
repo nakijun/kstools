@@ -21,8 +21,8 @@ type
     FPeriod: Cardinal;
     FTimerHandle: THandle;
     FWindowHandle: HWND;
-    FThreadTimerCount: Cardinal;
-    FTimerCount: Cardinal;
+    FThreadCount: Cardinal;
+    FCount: Cardinal;
     FOnTimer: TNotifyEvent;
     FEnabled: Boolean;
     procedure SetEnabled(Value: Boolean);
@@ -34,7 +34,7 @@ type
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
-    property TimerCount: Cardinal read FTimerCount;
+    property Count: Cardinal read FCount;
   published
     property Enabled: Boolean read FEnabled write SetEnabled default False;
     property DueTime: Cardinal read FDueTime write SetDueTime default 1000;
@@ -68,8 +68,8 @@ function DeleteTimerQueueTimer; external kernel32 name 'DeleteTimerQueueTimer';
 
 procedure TimerCallback(Timer: TksTimer; TimerOrWaitFired: Boolean); stdcall;
 begin
-  Inc(Timer.FThreadTimerCount);
-  PostMessage(Timer.FWindowHandle, WM_APP + 1, 0, Timer.FThreadTimerCount);
+  Inc(Timer.FThreadCount);
+  PostMessage(Timer.FWindowHandle, WM_APP + 1, 0, Timer.FThreadCount);
 end;
 
 { TksTimer }
@@ -84,7 +84,7 @@ end;
 
 destructor TksTimer.Destroy;
 begin
-  Enabled:= False;
+  SetEnabled(False);
   Classes.DeallocateHWnd(FWindowHandle);
   inherited Destroy;
 end;
@@ -93,7 +93,7 @@ procedure TksTimer.WndProc(var Msg: TMessage);
 begin
   with Msg do
     if Msg = WM_APP + 1 then begin
-      FTimerCount:= lParam;
+      FCount:= lParam;
       try
         Timer;
       except
@@ -108,8 +108,8 @@ procedure TksTimer.SetEnabled(Value: Boolean);
 begin
   if Value <> FEnabled then begin
     if Value then begin
-      FThreadTimerCount:= 0;
-      FTimerCount:= 0;
+      FThreadCount:= 0;
+      FCount:= 0;
       FEnabled:= CreateTimerQueueTimer(FTimerHandle, 0, @TimerCallback, Self,
         FDueTime, FPeriod, 0);
     end

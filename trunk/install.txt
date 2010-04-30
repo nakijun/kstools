@@ -24,7 +24,7 @@ Copy ksToolsR*.bpl file from the $(BDSCOMMONDIR)\Bpl folder (eg. "c:\Documents a
 
 Step 3. Compile and install designtime package
 ----------------------------------------------
-3.1. Open the designtime package ksToolsD ("File|Open project...");
+3.1. Open the designtime package ksToolsD.dpk ("File|Open project...");
 3.2. Rightclick the package name (ksToolsD*.bpl) in the Project Manager window;
 3.3. Select "Compile" from the popup menu;
 3.4. Select "Install" from the popup menu;

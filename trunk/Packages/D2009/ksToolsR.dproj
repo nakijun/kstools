@@ -57,6 +57,9 @@
 			<DCCReference Include="..\..\Source\ksMath.pas"/>
 			<DCCReference Include="..\..\Source\arrProcs.pas"/>
 			<DCCReference Include="..\..\Source\ksTimers.pas"/>
+			<DCCReference Include="..\..\Source\ksUtils.pas"/>
+			<DCCReference Include="..\..\Source\ksShrink.pas"/>
+			<DCCReference Include="..\..\Source\ksCompress.pas"/>
 			<BuildConfiguration Include="Base">
 				<Key>Base</Key>
 			</BuildConfiguration>

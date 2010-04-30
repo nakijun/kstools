@@ -40,7 +40,7 @@
     <DCCReference Include="..\ksRegTools.pas" />
     <DCCReference Include="..\ksTools.dcr" />
     <DCCReference Include="..\ksTools.dcr" />
-    <DCCReference Include="C:\Program Files\CodeGear\RAD Studio\5.0\bin\ksToolsR.dcp" />
-    <DCCReference Include="C:\Program Files\CodeGear\RAD Studio\5.0\bin\rtl.dcp" />
+    <DCCReference Include="ksToolsR.dcp" />
+    <DCCReference Include="rtl.dcp" />
   </ItemGroup>
 </Project>
