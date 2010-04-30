@@ -1,3 +1,17 @@
+version 0.50
+---------------
++ added ksUtils.pas unit;
++ added UtilTests unit test project;
++ added ksClasses.TksFiler class;
++ added ksClasses.TksReader class;
++ added ksClasses.TksWriter class;
++ added ksClasses.TksByteStream class;
++ added ksShrink unit;
++ added ksCompress unit;
++ added CompressTests unit test project;
+! TksTimer.TimerCount is renamed by TksTimer.Count;
++ added TksTimer documentation.
+
 version 0.46
 ---------------
 + added TksTimer class (Queue Timer wrapper);
@@ -28,14 +42,14 @@ version 0.30
 version 0.20
 ---------------
   TksComPort changes:
-+ added Read method override;
-+ added Write method override;
++ added Read method overload;
++ added Write method overload;
 + added OnReadStop event;
 + added StopPos property;
 + added Handle property;
 + added ClearRBuf and ClearWBuf methods;
 + fixed SetBaudrate error;
-! Active method is renamed Connected;
+! Active method is renamed by Connected;
 ! Enumeration types are replaced by class constants.
 
 version 0.10

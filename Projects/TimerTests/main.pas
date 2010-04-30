@@ -16,6 +16,8 @@ type
     Memo2: TMemo;
     cmbInterval: TComboBox;
     Label1: TLabel;
+    Label2: TLabel;
+    Label3: TLabel;
     procedure btnRunClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
   private

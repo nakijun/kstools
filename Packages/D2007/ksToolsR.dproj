@@ -40,8 +40,11 @@
     <DCCReference Include="..\..\Source\arrProcs.pas" />
     <DCCReference Include="..\..\Source\ksClasses.pas" />
     <DCCReference Include="..\..\Source\ksComm.pas" />
+    <DCCReference Include="..\..\Source\ksCompress.pas" />
     <DCCReference Include="..\..\Source\ksMath.pas" />
+    <DCCReference Include="..\..\Source\ksShrink.pas" />
     <DCCReference Include="..\..\Source\ksTimers.pas" />
+    <DCCReference Include="..\..\Source\ksUtils.pas" />
     <DCCReference Include="..\..\Source\rtl.dcp" />
     <DCCReference Include="..\..\Source\vcl.dcp" />
   </ItemGroup>

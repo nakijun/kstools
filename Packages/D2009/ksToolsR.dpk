@@ -36,6 +36,9 @@ contains
   ksClasses in '..\..\Source\ksClasses.pas',
   ksMath in '..\..\Source\ksMath.pas',
   arrProcs in '..\..\Source\arrProcs.pas',
-  ksTimers in '..\..\Source\ksTimers.pas';
+  ksTimers in '..\..\Source\ksTimers.pas',
+  ksUtils in '..\..\Source\ksUtils.pas',
+  ksShrink in '..\..\Source\ksShrink.pas',
+  ksCompress in '..\..\Source\ksCompress.pas';
 
 end.
