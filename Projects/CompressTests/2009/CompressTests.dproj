@@ -51,6 +51,7 @@
 			<DCCReference Include="..\TestCompress.pas"/>
 			<DCCReference Include="..\..\..\Source\ksCompress.pas"/>
 			<DCCReference Include="..\..\..\source\ksClasses.pas"/>
+			<DCCReference Include="..\..\..\Source\ksFlateHuffman.pas"/>
 			<BuildConfiguration Include="Base">
 				<Key>Base</Key>
 			</BuildConfiguration>

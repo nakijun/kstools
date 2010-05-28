@@ -38,12 +38,62 @@ type
 
 { TksBytesStream }
 
+type
   TksBytesStream = class(TMemoryStream)
   private
     function GetBytes: TBytes;
   public
     constructor Create(const ABytes: TBytes); overload;
     property Bytes: TBytes read GetBytes;
+  end;
+
+{ TksBufStream }
+
+  TksBufStream = class(TStream)
+  private
+    FBuffer: Pointer;
+    FBufSize: LongInt;
+    FBufEnd: LongInt;
+    FBufPos: LongInt;
+    FBufStart: Int64;
+    FIsDirty : Boolean;
+    FStream : TStream;
+    procedure FlushBuf;
+    procedure WriteBuf;
+    procedure ReadBuf;
+  protected
+    function GetSize: Int64; override;
+  public
+    constructor Create(AStream: TStream; ABufSize: Cardinal);
+    destructor Destroy; override;
+    function Read(var Buffer; Count: Longint): Longint; override;
+    function Write(const Buffer; Count: Longint): Longint; override;
+    function Seek(const Offset: Int64; Origin: TSeekOrigin): Int64; override;
+    procedure WriteByte(Value: Byte);
+  end;
+
+{ TksNullStream }
+
+  TksNullStream = class(TStream)
+  public
+    function Read(var Buffer; Count: LongInt): LongInt; override;
+    function Seek(const Offset: Int64; Origin: TSeekOrigin): Int64; override;
+    function Write(const Buffer; Count: LongInt): LongInt; override;
+  end;
+
+{ TksSubStream }
+
+  TksSubStream = class(TStream)
+  private
+    FOrigin: Int64;
+    FPosition: Int64;
+    FSize: Int64;
+    FStream: TStream;
+  public
+    constructor Create(AStream: TStream; AOrigin, ASize: Int64);
+    function Read(var Buffer; Count: Longint): LongInt; override;
+    function Seek(const Offset: Int64; Origin: TSeekOrigin): Int64; override;
+    function Write(const Buffer; Count: Longint): LongInt; override;
   end;
 
 { TksFiler }
@@ -284,6 +334,197 @@ function TksBytesStream.GetBytes: TBytes;
 begin
   SetLength(Result, Size);
   Move(Memory^, Result[0], Size);
+end;
+
+{ TksBufStream }
+
+constructor TksBufStream.Create(AStream: TStream; ABufSize: Cardinal);
+begin
+  inherited Create;
+  FStream:= AStream;
+  GetMem(FBuffer, ABufSize);
+  FBufSize:= ABufSize;
+  FBufStart:= FStream.Position;
+  FIsDirty:= False;
+  FBufEnd:= 0;
+  FBufPos:= 0;
+end;
+
+destructor TksBufStream.Destroy;
+begin
+  if FIsDirty then FlushBuf;
+  FStream.Seek(FBufStart + FBufPos, soBeginning);
+  FreeMem(FBuffer, FBufSize);
+  inherited Destroy;
+end;
+
+procedure TksBufStream.FlushBuf;
+begin
+  FStream.Position:= FBufStart;
+  FStream.WriteBuffer(FBuffer^, FBufEnd);
+  FIsDirty:= False;
+end;
+
+procedure TksBufStream.WriteBuf;
+begin
+  FlushBuf;
+//  FBufStart:= FStream.Position;
+  FBufStart:= FBufStart + FBufEnd;
+  FBufPos:= 0;
+  FBufEnd:= 0;
+end;
+
+procedure TksBufStream.ReadBuf;
+begin
+//  FBufStart:= FStream.Position;
+  FBufStart:= FBufStart + FBufEnd;
+  FBufEnd:= FStream.Read(FBuffer^, FBufSize);
+  if FBufEnd = 0 then raise EReadError.Create(SReadError);
+  FBufPos:= 0;
+end;
+
+function TksBufStream.Read(var Buffer; Count: LongInt): LongInt;
+var
+  P: PByte;
+  BytesToMove: LongInt;
+
+begin
+  if FIsDirty and (FBufPos + Count > FBufEnd) then FlushBuf;
+  Result:= 0;
+  P:= @Buffer;
+  while Count > 0 do begin
+    if FBufEnd = FBufPos then begin
+//      FBufStart:= FStream.Position;
+      FBufStart:= FBufStart + FBufEnd;
+      FBufPos:= 0;
+      FBufEnd:= FStream.Read(FBuffer^, FBufSize);
+      if FBufEnd = 0 then Break;
+    end;
+    BytesToMove:= FBufEnd;
+    if BytesToMove > Count then BytesToMove:= Count;
+    Dec(Count, BytesToMove);
+    Inc(Result, BytesToMove);
+    Move(Pointer(LongInt(FBuffer) + FBufPos)^, P^, BytesToMove);
+    Inc(P, BytesToMove);
+  end;
+end;
+
+function TksBufStream.Write(const Buffer; Count: LongInt): LongInt;
+var
+  P: PByte;
+  BytesToMove: LongInt;
+
+begin
+  Result:= 0;
+  P:= @Buffer;
+  while Count > 0 do begin
+    if FBufSize = FBufPos then WriteBuf;
+    BytesToMove:= FBufSize;
+    if BytesToMove > Count then BytesToMove:= Count;
+    Dec(Count, BytesToMove);
+    Inc(Result, BytesToMove);
+    Move(P^, FBuffer^, BytesToMove);
+    Inc(P, BytesToMove);
+    FBufPos:= FBufPos + BytesToMove;
+  end;
+  if FBufPos > FBufEnd then begin
+    FBufEnd:= FBufPos;
+    FIsDirty:= True;
+  end;
+end;
+
+function TksBufStream.Seek(const Offset: Int64; Origin: TSeekOrigin): Int64;
+var
+  NewPos: Int64;
+
+begin
+  case Origin of
+    soBeginning: NewPos:= Offset;
+    soCurrent: NewPos:= FBufStart + Offset + FBufPos;
+    soEnd: NewPos:= Size + Offset;
+  end;
+  if (NewPos < FBufStart) or (NewPos >= FBufStart + FBufEnd) then begin
+    if FIsDirty then FlushBuf;
+    FStream.Position:= NewPos;
+    FBufPos:= 0;
+    FBufEnd:= 0;
+    FBufStart:= NewPos;
+  end
+  else FBufPos:= NewPos - FBufStart;
+  Result:= NewPos;
+end;
+
+function TksBufStream.GetSize: Int64;
+begin
+  Result:= FStream.Size;
+  if FIsDirty and (FBufStart + FBufEnd > Result) then
+    Result:= FBufStart + FBufEnd;
+end;
+
+procedure TksBufStream.WriteByte(Value: Byte);
+begin
+  if FBufSize = FBufPos then WriteBuf;
+  FIsDirty:= True;
+  PByteArray(FBuffer)^[FBufPos]:= Value;
+  Inc(FBufPos);
+  if FBufPos > FBufEnd then FBufEnd:= FBufPos;
+end;
+
+{ TksNullStream }
+
+function TksNullStream.Read(var Buffer; Count: LongInt): LongInt;
+begin
+  Result:= 0;
+end;
+
+function TksNullStream.Seek(const Offset: Int64; Origin: TSeekOrigin): Int64;
+begin
+  Result:= Offset;
+end;
+
+function TksNullStream.Write(const Buffer; Count: LongInt): LongInt;
+begin
+  Result:= Count;
+end;
+
+{ TksSubStream }
+
+constructor TksSubStream.Create(AStream: TStream; AOrigin, ASize: Int64);
+begin
+  inherited Create;
+  FStream:= AStream;
+  FOrigin:= AOrigin;
+  FSize:= ASize;
+end;
+
+function TksSubStream.Read(var Buffer; Count: Longint): LongInt;
+begin
+  if FPosition + Count > FSize then Count:= FSize - FPosition;
+  if Count <= 0 then Result:= 0
+  else begin
+    FStream.Seek(FOrigin + FPosition, soBeginning);
+    Result:= FStream.Read(Buffer, Count);
+    FPosition:= FPosition + Result;
+  end;
+end;
+
+function TksSubStream.Seek(const Offset: Int64; Origin: TSeekOrigin): Int64;
+begin
+  if Origin = soBeginning then FPosition:= Offset
+  else if Origin = soCurrent then FPosition:= FPosition + Offset
+  else if Origin = soEnd then FPosition:= FSize + Offset;
+  Result:= FPosition;
+end;
+
+function TksSubStream.Write(const Buffer; Count: Longint): LongInt;
+begin
+  if FPosition + Count > FSize then Count:= FSize - FPosition;
+  if Count <= 0 then Result:= 0
+  else begin
+    FStream.Seek(FOrigin + FPosition, soBeginning);
+    Result:= FStream.Write(Buffer, Count);
+    FPosition:= FPosition + Result;
+  end;
 end;
 
 { TksFiler }

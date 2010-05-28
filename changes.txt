@@ -1,3 +1,13 @@
+version 0.51
+---------------
++ added TksFlateHuffmanEncoder class
+  (Huffman encoder for Deflate algorithm)
++ added TksFlateHuffmanDecoder class
+  (Huffman decoder for Inflate algorithm)
++ added TksBufStream class;
++ added TksNullStream class;
++ added TksSubStream class.
+
 version 0.50
 ---------------
 + added ksUtils.pas unit;

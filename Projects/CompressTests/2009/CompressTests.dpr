@@ -21,7 +21,8 @@ uses
   TextTestRunner,
   TestCompress in '..\TestCompress.pas',
   ksCompress in '..\..\..\Source\ksCompress.pas',
-  ksClasses in '..\..\..\source\ksClasses.pas';
+  ksClasses in '..\..\..\source\ksClasses.pas',
+  ksFlateHuffman in '..\..\..\Source\ksFlateHuffman.pas';
 
 {R *.RES}
 
