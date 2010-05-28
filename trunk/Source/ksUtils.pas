@@ -133,6 +133,8 @@ function Rol32(Value: LongWord; Shift: Byte = 1): LongWord;
   specified in the Shift parameter }
 function Ror32(Value: LongWord; Shift: Byte = 1): LongWord;
 
+function MaxByteOf(A, B: Byte): Byte;
+
 implementation
 
 function CompareBytes(P1, P2: Pointer; Len: Cardinal): Integer;
@@ -382,6 +384,12 @@ function Ror32(Value: LongWord; Shift: Byte): LongWord;
 asm
         MOV     CL,DL
         ROR     EAX,CL
+end;
+
+function MaxByteOf(A, B: Byte): Byte;
+begin
+  if A > B then Result:= A
+  else Result := B;
 end;
 
 end.

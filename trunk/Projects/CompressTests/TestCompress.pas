@@ -26,12 +26,15 @@ type
   TTestCompress = class(TTestCase)
   private
     procedure CheckEqualBytes(const A, B: TBytes; const Comment: string = '');
-    procedure TestShrinkString(const S: string);
+    procedure TestShrinkASCII(const S: string);
+    procedure TestFlateHuffmanASCII(const S: string);
   protected
     procedure SetUp; override;
   published
     procedure TestShrinkA;
     procedure TestShrinkFile;
+    procedure TestFlateHuffmanA;
+    procedure TestFlateHuffmanFile;
   end;
 
 implementation
@@ -47,13 +50,13 @@ begin
   end;
 end;
 
-function CRC32Stream(AStream: TStream): LongWord;
+function CRC32Stream(AStream: TStream; Count: Integer = 0): LongWord;
 var
-  Count: Integer;
   B: Byte;
 
 begin
-  Count:= AStream.Seek(0, soFromEnd);
+  if Count = 0 then
+    Count:= AStream.Seek(0, soFromEnd);
   AStream.Seek(0, soFromBeginning);
   Result:= $FFFFFFFF;
   while Count > 0 do begin
@@ -80,7 +83,7 @@ end;
 
 procedure TTestCompress.TestShrinkA;
 begin
-  TestShrinkString('abraabracadabra');
+  TestShrinkASCII('abraabracadabra');
 end;
 
 procedure TTestCompress.TestShrinkFile;
@@ -119,7 +122,7 @@ begin
   end;
 end;
 
-procedure TTestCompress.TestShrinkString(const S: string);
+procedure TTestCompress.TestShrinkASCII(const S: string);
 var
   OriginalBytes,
   CompressedBytes,
@@ -130,6 +133,64 @@ begin
   CompressedBytes:= ShrinkBytes(OriginalBytes);
   UnCompressedBytes:= UnshrinkBytes(CompressedBytes, Length(OriginalBytes));
   CheckEqualBytes(OriginalBytes, UncompressedBytes);
+end;
+
+procedure TTestCompress.TestFlateHuffmanASCII(const S: string);
+var
+  OriginalBytes,
+  CompressedBytes,
+  UnCompressedBytes: TBytes;
+
+begin
+  OriginalBytes:= StringToBytes(S);
+  CompressedBytes:= FlateHuffEncodeBytes(OriginalBytes);
+  UnCompressedBytes:= FlateHuffDecodeBytes(CompressedBytes, Length(OriginalBytes));
+  CheckEqualBytes(OriginalBytes, UncompressedBytes);
+end;
+
+procedure TTestCompress.TestFlateHuffmanA;
+begin
+  TestFlateHuffmanASCII('abraabracadabra');
+end;
+
+procedure TTestCompress.TestFlateHuffmanFile;
+//const
+//  MaxSize = 60 * 1024;
+
+var
+  OriginalStream,
+  CompressedStream,
+  UnCompressedStream: TStream;
+  Size, NewSize: Integer;
+  CRC, NewCRC: LongWord;
+
+begin
+  OriginalStream:= TFileStream.Create('CompressTests.exe',
+                                       fmOpenRead or fmShareDenyNone);
+  try
+    Size:= OriginalStream.Size;
+//    if Size > MaxSize then Size:= MaxSize;
+    CompressedStream:= TMemoryStream.Create;
+    try
+      FlateHuffEncodeStream(OriginalStream, CompressedStream, Size);
+      CompressedStream.Seek(0, soFromBeginning);
+      UnCompressedStream:= TMemoryStream.Create;
+      try
+        FlateHuffDecodeStream(CompressedStream, UncompressedStream, Size);
+        NewSize:= UncompressedStream.Size;
+        CheckEquals(Size, NewSize, Format('Size: %d -- %d', [Size, NewSize]));
+        CRC:= CRC32Stream(OriginalStream, Size);
+        NewCRC:= CRC32Stream(UncompressedStream);
+        CheckEquals(CRC, NewCRC, Format('Size: %.8x -- %.8x', [CRC, NewCRC]));
+      finally
+        UnCompressedStream.Free;
+      end;
+    finally
+      CompressedStream.Free;
+    end;
+  finally
+    OriginalStream.Free;
+  end;
 end;
 
 procedure TTestCompress.SetUp;
