@@ -7,6 +7,12 @@
 
 unit ksUtils;
 
+{$I ksTools.inc}
+
+{$IFNDEF OldVersion}
+{$POINTERMATH ON}
+{$ENDIF}
+
 interface
 
 uses SysUtils, Classes;
@@ -111,8 +117,9 @@ function FindByte(Buf: Pointer; B: Byte; BufSize: Integer): Pointer;
   Returns pointer to the first B entry, nil if B not found. }
 function FindByteBack(Buf: Pointer; B: Byte; BufSize: Integer): Pointer;
 
-{ Percentage returns the ratio of V1 to V2 * 100. }
-function Percentage(V1, V2: Integer): Integer;
+{ Percentage returns the ratio of V1 * 100 to V2 }
+function Percentage(V1, V2: LongInt): Integer;
+function Percentage64(V1, V2: Int64): Integer;
 
 { CRC32OfByte returns updated CRC32 value after handling AByte }
 function CRC32OfByte(AByte: Byte; CurCrc: LongWord): LongWord;
@@ -120,6 +127,9 @@ function CRC32OfByte(AByte: Byte; CurCrc: LongWord): LongWord;
 { CRC32OfData returns updated CRC32 value after handling DataSize bytes }
 function Crc32OfData(var Data; DataSize: LongWord;
   CurCrc: LongWord = $FFFFFFFF): LongWord;
+
+function CRC32Stream(Stream: TStream): LongWord;
+function CRC32File(const FileName: string): LongWord;
 
 { SwapBits swaps Len<=16 bits in Code }
 function SwapBits16(Code, Len: Word): Word;
@@ -134,6 +144,9 @@ function Rol32(Value: LongWord; Shift: Byte = 1): LongWord;
 function Ror32(Value: LongWord; Shift: Byte = 1): LongWord;
 
 function MaxByteOf(A, B: Byte): Byte;
+
+function BytesToString(const Value: TBytes): string;
+function StringToBytes(const Value: string): TBytes;
 
 implementation
 
@@ -284,13 +297,32 @@ end;
 
 function Percentage(V1, V2: LongInt): LongInt;
 begin
-  if V2 > $FA0000 then begin
-    V1:= (V1 + $80) shr 8;
-    V2:= (V2 + $80) shr 8;
-  end;
   if V2 <= 0 then Result := 0
-  else if V1 >= V2 then Result:= 100
-  else Result:= (V1 * 100) div V2;
+  else begin
+    if V2 > $FA0000 then begin
+      V1:= (V1 + $80) shr 8;
+      V2:= (V2 + $80) shr 8;
+    end;
+    if V1 >= V2 then Result:= 100
+    else Result:= (V1 * 100) div V2;
+  end;
+end;
+
+function Percentage64(V1, V2: Int64): Integer;
+begin
+  if V2 <= 0 then Result := 0
+  else begin
+    if V2 > $FA0000 then begin
+      V1:= (V1 + $80);
+      V2:= (V2 + $80);
+      repeat
+        V1:= V1 shr 8;
+        V2:= V2 shr 8;
+      until V2 <= $FA0000;
+    end;
+    if LongInt(V1) >= LongInt(V2) then Result:= 100
+    else Result:= (LongInt(V1) * 100) div LongInt(V2);
+  end;
 end;
 
 function CRC32OfByte(AByte: Byte; CurCrc: LongWord): LongWord;
@@ -310,6 +342,45 @@ begin
   for I:= 0 to (DataSize-1) do
     Result:= Crc32Table[Byte(Result xor CRCByteArray(Data)[I])] xor
       LongWord(Result shr 8);
+end;
+
+function CRC32Stream(Stream: TStream): LongWord;
+var
+  P, Sentinel: PByte;
+  N: Integer;
+  Buf: packed array[0..$3FFF] of Byte;
+
+begin
+  Result:= $FFFFFFFF;
+  repeat
+    N:= Stream.Read(Buf, SizeOf(Buf));
+    if N = 0 then Break;
+    P:= @Buf;
+{$IFDEF OldVersion}
+    Sentinel:= P;
+    Inc(Sentinel, N);
+{$ELSE}
+    Sentinel:= P + N;
+{$ENDIF}
+    repeat
+      Result:= Crc32Table[Byte(Result xor P^)] xor LongWord(Result shr 8);
+      Inc(P);
+    until P = Sentinel;
+  until False;
+  Result:= not Result;
+end;
+
+function CRC32File(const FileName: string): LongWord;
+var
+  Stream: TStream;
+
+begin
+  Stream:= TFileStream.Create(FileName, fmOpenRead or fmShareDenyWrite);
+  try
+    Result:= CRC32Stream(Stream);
+  finally
+    Stream.Free;
+  end;
 end;
 
 {
@@ -390,6 +461,36 @@ function MaxByteOf(A, B: Byte): Byte;
 begin
   if A > B then Result:= A
   else Result := B;
+end;
+
+function BytesToString(const Value: TBytes): string;
+var
+  AnsiValue: AnsiString;
+  L: Integer;
+
+begin
+  L:= Length(Value);
+  if L = 0 then Result:= ''
+  else begin
+    SetLength(AnsiValue, L);
+    Move(Value[0], AnsiValue[1], L);
+    Result:= string(AnsiValue);
+  end;
+end;
+
+function StringToBytes(const Value: string): TBytes;
+var
+  AnsiValue: AnsiString;
+  L: Integer;
+
+begin
+  if Length(Value) = 0 then Result:= nil
+  else begin
+    AnsiValue:= AnsiString(Value);
+    L:= Length(AnsiValue);
+    SetLength(Result, L);
+    Move(AnsiValue[1], Result[0], L);
+  end;
 end;
 
 end.

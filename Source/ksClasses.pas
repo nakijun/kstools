@@ -172,8 +172,15 @@ type
     destructor Destroy; override;
   end;
 
+procedure CopyFiler(Reader: TksReader; Writer: TksWriter; Count: LongWord);
 
 implementation
+
+procedure CopyFiler(Reader: TksReader; Writer: TksWriter; Count: LongWord);
+begin
+  if Writer.CopyFrom(Reader, Count) <> Count
+    then raise EReadError.CreateRes(@SReadError);
+end;
 
 { TksRingBuffer }
 
