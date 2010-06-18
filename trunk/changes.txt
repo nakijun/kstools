@@ -1,9 +1,16 @@
+version 0.52
+---------------
++ added ksZCrypt.pas unit;
++ added TksZCrypto (Traditional PKWARE encryption for Zip archives);
++ added TksArchive component (early beta);
++ added TksZipArchive class (Native Zip 2.0 Format support, early beta).
+
 version 0.51
 ---------------
 + added TksFlateHuffmanEncoder class
-  (Huffman encoder for Deflate algorithm)
+  (Huffman encoder for Deflate algorithm);
 + added TksFlateHuffmanDecoder class
-  (Huffman decoder for Inflate algorithm)
+  (Huffman decoder for Inflate algorithm);
 + added TksBufStream class;
 + added TksNullStream class;
 + added TksSubStream class.

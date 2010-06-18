@@ -20,22 +20,42 @@ interface
 
 uses
   TestFramework, Windows, Forms, Dialogs, Controls, Classes, SysUtils, Variants,
-  Graphics, Messages, ksUtils, ksCompress;
+  Graphics, Messages, ksUtils, ksCompress, ksArchives, ksZip;
 
 type
   TTestCompress = class(TTestCase)
-  private
+  protected
     procedure CheckEqualBytes(const A, B: TBytes; const Comment: string = '');
+  end;
+
+  TTestCompressAll = class(TTestCompress)
+  protected
     procedure TestShrinkASCII(const S: string);
     procedure TestFlateHuffmanASCII(const S: string);
-  protected
-    procedure SetUp; override;
+//    procedure SetUp; override;
   published
     procedure TestShrinkA;
     procedure TestShrinkFile;
     procedure TestFlateHuffmanA;
     procedure TestFlateHuffmanFile;
   end;
+
+  TTestZipCrypto = class(TTestCompress)
+  protected
+//    procedure SetUp; override;
+    procedure TestASCII(const S, PassW: string; Check: Integer);
+  published
+    procedure TestZipCryptoA;
+  end;
+
+  TTestZip = class(TTestCase)
+  protected
+    procedure ListZip(const ZipName: string);
+  published
+    procedure TestZipOpen;
+    procedure TestZipCreate;
+  end;
+
 
 implementation
 
@@ -49,7 +69,7 @@ begin
     Result[I]:= Byte(S[I + 1]);
   end;
 end;
-
+{
 function CRC32Stream(AStream: TStream; Count: Integer = 0): LongWord;
 var
   B: Byte;
@@ -65,7 +85,7 @@ begin
     Dec(Count);
   end;
 end;
-
+}
 { TestCompress }
 
 procedure TTestCompress.CheckEqualBytes(const A, B: TBytes;
@@ -81,12 +101,14 @@ begin
       Format('%s Data[%d]: %.4x -- %.4x', [Comment, I, A[I], B[I]]));
 end;
 
-procedure TTestCompress.TestShrinkA;
+{ TestCompressAll }
+
+procedure TTestCompressAll.TestShrinkA;
 begin
   TestShrinkASCII('abraabracadabra');
 end;
 
-procedure TTestCompress.TestShrinkFile;
+procedure TTestCompressAll.TestShrinkFile;
 var
   OriginalStream,
   CompressedStream,
@@ -108,7 +130,9 @@ begin
         UnshrinkStream(CompressedStream, UncompressedStream, Size);
         NewSize:= UncompressedStream.Size;
         CheckEquals(Size, NewSize, Format('Size: %d -- %d', [Size, NewSize]));
+        OriginalStream.Seek(0, soFromBeginning);
         CRC:= CRC32Stream(OriginalStream);
+        UncompressedStream.Seek(0, soFromBeginning);
         NewCRC:= CRC32Stream(UncompressedStream);
         CheckEquals(CRC, NewCRC, Format('Size: %.8x -- %.8x', [CRC, NewCRC]));
       finally
@@ -122,7 +146,7 @@ begin
   end;
 end;
 
-procedure TTestCompress.TestShrinkASCII(const S: string);
+procedure TTestCompressAll.TestShrinkASCII(const S: string);
 var
   OriginalBytes,
   CompressedBytes,
@@ -135,7 +159,7 @@ begin
   CheckEqualBytes(OriginalBytes, UncompressedBytes);
 end;
 
-procedure TTestCompress.TestFlateHuffmanASCII(const S: string);
+procedure TTestCompressAll.TestFlateHuffmanASCII(const S: string);
 var
   OriginalBytes,
   CompressedBytes,
@@ -148,12 +172,12 @@ begin
   CheckEqualBytes(OriginalBytes, UncompressedBytes);
 end;
 
-procedure TTestCompress.TestFlateHuffmanA;
+procedure TTestCompressAll.TestFlateHuffmanA;
 begin
   TestFlateHuffmanASCII('abraabracadabra');
 end;
 
-procedure TTestCompress.TestFlateHuffmanFile;
+procedure TTestCompressAll.TestFlateHuffmanFile;
 //const
 //  MaxSize = 60 * 1024;
 
@@ -179,7 +203,7 @@ begin
         FlateHuffDecodeStream(CompressedStream, UncompressedStream, Size);
         NewSize:= UncompressedStream.Size;
         CheckEquals(Size, NewSize, Format('Size: %d -- %d', [Size, NewSize]));
-        CRC:= CRC32Stream(OriginalStream, Size);
+        CRC:= CRC32Stream(OriginalStream);
         NewCRC:= CRC32Stream(UncompressedStream);
         CheckEquals(CRC, NewCRC, Format('Size: %.8x -- %.8x', [CRC, NewCRC]));
       finally
@@ -193,13 +217,176 @@ begin
   end;
 end;
 
-procedure TTestCompress.SetUp;
-begin
+{ TTestZipCrypto }
 
+procedure TTestZipCrypto.TestASCII(const S, PassW: string; Check: Integer);
+var
+  OriginalBytes,
+  Password,
+  EncryptedBytes,
+  DecryptedBytes: TBytes;
+
+begin
+  OriginalBytes:= StringToBytes(S);
+  Password:= StringToBytes(PassW);
+  EncryptedBytes:= ZipEncryptBytes(OriginalBytes, PassWord, Check);
+  DecryptedBytes:= ZipDecryptBytes(EncryptedBytes, PassWord, Check);
+  CheckEqualBytes(OriginalBytes, DecryptedBytes);
+end;
+
+procedure TTestZipCrypto.TestZipCryptoA;
+var
+  Check: Integer;
+
+begin
+  for Check:= -1 to 2 do begin
+    TestASCII('TEST_DATA', 'TEST_PASSW', Check);
+  end;
+end;
+
+{ TTestZip }
+
+procedure TTestZip.ListZip(const ZipName: string);
+var
+  Archive: TksArchive;
+  ZipArchive: TksZipArchive;
+  SL: TStringList;
+  Info: TksArchive.TItemInfo;
+  I: Integer;
+
+begin
+  Archive:= TksArchive.Create(nil);
+  try
+    Archive.Open(ZipName, fmOpenRead or fmShareDenyWrite);
+    ZipArchive:= Archive.Archive as TksZipArchive;
+    SL:= TStringList.Create;
+    try
+
+      SL.Add(Format('%s File List', [ZipName]));
+      SL.Add('========================');
+      for I:= 0 to Archive.ItemCount - 1 do begin
+        if Archive.GetItemInfo(Info, I)
+          then SL.Add(Info.FileName)
+          else SL.Add('ERROR !');
+      end;
+
+      SL.Add('');
+      SL.Add(Format('%s End of Central Directory Record', [ZipName]));
+      SL.Add('==============================================');
+      with ZipArchive.EndOfCentralDirRec^ do begin
+        SL.Add(Format('Signature .......... $%.8x', [Signature]));
+        SL.Add(Format('DiskNumber ......... %d', [DiskNumber]));
+        SL.Add(Format('StartDiskNumber .... %d', [StartDiskNumber]));
+        SL.Add(Format('EntriesOnDisk ...... %d', [EntriesOnDisk]));
+        SL.Add(Format('TotalEntries ....... %d', [TotalEntries]));
+        SL.Add(Format('DirectorySize ...... %d', [DirectorySize]));
+        SL.Add(Format('DirectoryOffset .... %d', [DirectoryOffset]));
+        SL.Add(Format('CommentLen ......... %d', [CommentLen]));
+      end;
+
+      SL.Add('');
+      SL.Add(Format('%s Central Directory', [ZipName]));
+      SL.Add('================================');
+      for I:= 0 to Archive.ItemCount - 1 do begin
+        SL.Add(Format('=== Item #%d ===', [I+1]));
+        with ZipArchive.Items[I]^ do begin
+          SL.Add(Format('Signature .......... $%.8x', [Signature]));
+          SL.Add(Format('VersionMadeBy ...... %d', [VersionMadeBy]));
+          SL.Add(Format('VersionToExtract ... %d', [VersionToExtract]));
+          SL.Add(Format('Flags .............. $%.4x', [Flags]));
+          SL.Add(Format('CompressionMethod .. %d', [CompressionMethod]));
+          SL.Add(Format('LastModDateTime .... $%.8x', [LastModDateTime]));
+          SL.Add(Format('CRC32 .............. $%.8x', [CRC32]));
+          SL.Add(Format('CompressedSize ..... %d', [CompressedSize]));
+          SL.Add(Format('UncompressedSize ... %d', [UncompressedSize]));
+          SL.Add(Format('FileNameLen ........ %d', [FileNameLen]));
+          SL.Add(Format('ExtraFieldLen ...... %d', [ExtraFieldLen]));
+          SL.Add(Format('FileCommentLen ..... %d', [FileCommentLen]));
+          SL.Add(Format('DiskNumberStart .... %d', [DiskNumberStart]));
+          SL.Add(Format('InternalAttributes . $%.4x', [InternalAttributes]));
+          SL.Add(Format('ExternalAttributes . $%.8x', [ExternalAttributes]));
+          SL.Add(Format('RelativeOffset ..... %d [$%.8x]',
+                         [RelativeOffset, RelativeOffset]));
+        end;
+        if Archive.GetItemInfo(Info, I) then begin
+          SL.Add('--- Info ---');
+          with Info do begin
+            SL.Add(Format('CompressedSize ..... %d', [CompressedSize]));
+            SL.Add(Format('Attributes ......... $%.8x', [Attributes]));
+            SL.Add(FormatDateTime('"Date & Time ........" dddddd, hh.nn.ss.zzz',
+                                   FileDate));
+            SL.Add(Format('File Name .......... %s', [FileName]));
+            SL.Add(Format('File Size .......... %d', [FileSize]));
+          end;
+        end;
+        SL.Add('');
+      end;
+
+      SL.SaveToFile(ChangeFileExt(ZipName, '.LST'));
+    finally
+      SL.Free;
+    end;
+  finally
+    Archive.Free;
+  end;
+end;
+
+procedure TTestZip.TestZipCreate;
+var
+  Archive: TksArchive;
+  ZipArchive: TksZipArchive;
+  SL: TStringList;
+  Info: TksArchive.TItemInfo;
+  I: Integer;
+
+begin
+  Archive:= TksArchive.Create(nil);
+  try
+    Archive.Open('ks045.zip', fmCreate);
+    ZipArchive:= Archive.Archive as TksZipArchive;
+    Archive.AppendFile('ksTools045.zip');
+    Archive.AppendFile('ksTools045.LST');
+    Archive.ExtractFile(1, 'ksTools045.TXT');
+    ZipArchive.FileEncrypted:= True;
+    Archive.AppendFile('ksTools045.TXT');
+    Archive.ExtractFile(2, 'ksTools045.LST');
+    ZipArchive.FileEncrypted:= False;
+    ZipArchive.CompressionMethod:= TksZipArchive.METHOD_SHRINK;
+    Archive.AppendFile('ksTools045.LST', 'ksTools045.LS');
+    Archive.ExtractFile(3, 'ksTools045.TXT');
+    ZipArchive.FileEncrypted:= True;
+    ZipArchive.FilePasswordString:= '123';
+    Archive.AppendFile('ksTools045.TXT', 'ksTools045.TX');
+    Archive.ExtractFile(4);
+    Archive.Close;
+//    Archive.Open('ks045.zip', fmOpenRead or fmShareDenyWrite);
+{    SL:= TStringList.Create;
+    try
+      for I:= 0 to Archive.ItemCount - 1 do begin
+        if Archive.GetItemInfo(Info, I)
+          then SL.Add(Info.FileName)
+          else SL.Add('ERROR !');
+      end;
+      SL.SaveToFile('ks045.lst');
+    finally
+      SL.Free;
+    end;}
+    ListZip('ks045.zip');
+//    ListZip('ksTools.zip');
+  finally
+    Archive.Free;
+  end;
+end;
+
+procedure TTestZip.TestZipOpen;
+begin
+  ListZip('ksTools045.zip');
 end;
 
 initialization
   // Register any test cases with the test runner
-  RegisterTest(TTestCompress.Suite);
+  RegisterTest(TTestCompressAll.Suite);
+  RegisterTest(TTestZipCrypto.Suite);
+  RegisterTest(TTestZip.Suite);
 end.
 
